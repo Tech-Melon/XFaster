@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tech Melon XFaster</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="header">
+      <div class="brand">
+        <span class="logo">X</span>
+        <div>
+          <h1>Tech Melon XFaster</h1>
+          <p class="sub" id="subTitle">均衡折中 · Tech Melon</p>
+        </div>
+      </div>
+    </header>
+
+    <!-- 站点授权：置顶，未授权时醒目 -->
+    <section class="perm-card" id="permBlock">
+      <div class="perm-head">
+        <span class="perm-title">站点授权</span>
+        <span class="perm-badge" id="permBadge">未授权全站</span>
+      </div>
+      <p class="perm-text" id="permText">
+        未授权全站时，外站点击 X 可能先闪冷标签再合并热壳。授权后与完整权限体验一致（页面内拦截）。
+      </p>
+      <div class="perm-actions">
+        <button type="button" id="btnGrantHosts" class="btn primary perm-main">
+          一键授权所有网站
+        </button>
+        <button type="button" id="btnGrantCurrent" class="btn">
+          授权当前网站
+        </button>
+      </div>
+      <p class="perm-site" id="permSite">当前站：—</p>
+    </section>
+
+    <section class="profile-block">
+      <div class="profile-title">一键配置</div>
+      <div class="profile-grid" role="group" aria-label="预热档位">
+        <button type="button" class="profile-btn" data-profile="eco" id="pf-eco">
+          节能
+        </button>
+        <button
+          type="button"
+          class="profile-btn"
+          data-profile="balanced"
+          id="pf-balanced"
+        >
+          均衡
+        </button>
+        <button type="button" class="profile-btn" data-profile="fast" id="pf-fast">
+          快速
+        </button>
+        <button
+          type="button"
+          class="profile-btn"
+          data-profile="turbo"
+          id="pf-turbo"
+        >
+          极速
+        </button>
+      </div>
+      <p class="profile-desc" id="profileDesc">—</p>
+    </section>
+
+    <section class="card">
+      <div class="row">
+        <span class="label">当前档位</span>
+        <span id="profileBadge" class="badge">均衡</span>
+      </div>
+      <div class="row">
+        <span class="label">打开方式</span>
+        <span id="openModeText" class="value">新标签</span>
+      </div>
+      <div class="row">
+        <span class="label">热实例</span>
+        <span id="warmStatus" class="value">无</span>
+      </div>
+      <div class="row" id="urlRow">
+        <span class="label">上次打开</span>
+        <span id="urlText" class="value mono">—</span>
+      </div>
+      <div class="row" id="ttlRow" hidden>
+        <span class="label">剩余 TTL</span>
+        <span id="ttlText" class="value">—</span>
+      </div>
+    </section>
+
+    <p id="hint" class="hint">授权按钮可直接点击。正在读取状态…</p>
+
+    <section class="actions">
+      <button type="button" id="btnOpen" class="btn primary">打开 X</button>
+      <div class="btn-row">
+        <button type="button" id="btnWarm" class="btn">立即预热</button>
+        <button type="button" id="btnRelease" class="btn ghost">释放预热</button>
+      </div>
+      <button type="button" id="btnOptions" class="btn link">打开设置…</button>
+    </section>
+
+    <section class="debug-panel" hidden>
+      <div class="debug-head">
+        <span>调试日志</span>
+        <button type="button" id="btnClearDebug" class="btn-mini">清空</button>
+      </div>
+      <pre id="debugLog" class="debug-log">—</pre>
+    </section>
+
+    <p id="toast" class="toast" hidden></p>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

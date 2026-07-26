@@ -1,0 +1,34 @@
+# 临时封装脚本（禁止进入扩展加载目录）
+_run_*.py
+*.py
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.log
+.idea/
+.vscode/
+*.swp
+*~
+
+# 依赖 / 构建（若后续引入）
+node_modules/
+dist/
+.cache/
+# 构建中间产物；发布 zip 可手动保留在 dist/
+*.zip
+!dist/*.zip
+.venv/
+venv/
+__pycache__/
+
+# 私人与本地
+.env
+.env.*
+*.local
+
+# 本机商店草稿 / 教程目录误提交防护
+DOC/
+**/Xfater*/
+**/*教程*

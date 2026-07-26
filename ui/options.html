@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tech Melon XFaster 设置</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="hero">
+        <h1>Tech Melon XFaster 设置</h1>
+        <p>
+          默认（均衡折中）：页面有推特链接时自动暖 1 个壳 · TTL 20 分钟（最长 1
+          小时）· 不悬停狂预热 · 省电/极速可在下方切换
+        </p>
+      </header>
+
+      <form id="form">
+        <section class="panel">
+          <h2>打开方式</h2>
+          <label class="field">
+            <span>默认打开位置</span>
+            <select name="openMode" id="openMode">
+              <option value="new_tab">新标签（推荐）</option>
+              <option value="current_tab">当前标签</option>
+            </select>
+          </label>
+          <label class="check">
+            <input type="checkbox" name="preferReuseXTab" id="preferReuseXTab" />
+            <span>优先复用已打开 / 预热的 X 标签</span>
+          </label>
+          <label class="check">
+            <input type="checkbox" name="singleXTabMode" id="singleXTabMode" />
+            <span>单 X 标签模式（所有链接尽量进同一个标签）</span>
+          </label>
+          <label class="check">
+            <input type="checkbox" name="normalizeToXCom" id="normalizeToXCom" />
+            <span>将 twitter.com 规范化为 x.com</span>
+          </label>
+          <label class="check">
+            <input
+              type="checkbox"
+              name="respectModifierClicks"
+              id="respectModifierClicks"
+            />
+            <span>尊重 Ctrl/⌘/Shift 点击的浏览器默认行为</span>
+          </label>
+        </section>
+
+        <section class="panel">
+          <h2>预热与性能</h2>
+          <label class="field">
+            <span>预热档位</span>
+            <select name="warmupProfile" id="warmupProfile">
+              <option value="eco">节能 — 几乎无后台开销</option>
+              <option value="balanced">均衡 — 有链接暖壳（默认）</option>
+              <option value="fast">快速 — 暖壳 + 悬停检测 · TTL 30m</option>
+              <option value="turbo">极速 — 暖壳 + 悬停预热 · TTL 45m</option>
+            </select>
+          </label>
+          <p class="hint" id="profileHint"></p>
+          <label class="field">
+            <span>热实例最长存活 N 分钟</span>
+            <select name="turboTtlMinutes" id="turboTtlMinutes">
+              <option value="1">1 分钟</option>
+              <option value="3">3 分钟</option>
+              <option value="5">5 分钟</option>
+              <option value="10">10 分钟</option>
+              <option value="20">20 分钟（均衡默认）</option>
+              <option value="30">30 分钟（快速）</option>
+              <option value="45">45 分钟（极速）</option>
+              <option value="60">60 分钟（最大）</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>预热入口 URL</span>
+            <input
+              type="url"
+              name="warmEntryUrl"
+              id="warmEntryUrl"
+              placeholder="https://x.com/home"
+            />
+          </label>
+          <label class="check">
+            <input
+              type="checkbox"
+              name="allowBackgroundWarmTab"
+              id="allowBackgroundWarmTab"
+            />
+            <span>允许后台热标签（L3，全局最多 1 个）</span>
+          </label>
+          <label class="check">
+            <input type="checkbox" name="autoWarmOnLinks" id="autoWarmOnLinks" />
+            <span>页面出现推特链接时自动后台预热</span>
+          </label>
+          <label class="check">
+            <input type="checkbox" name="autoWarmOnHover" id="autoWarmOnHover" />
+            <span>悬停推特链接时后台预加载该链接</span>
+          </label>
+          <label class="check">
+            <input
+              type="checkbox"
+              name="enableL1Preconnect"
+              id="enableL1Preconnect"
+            />
+            <span>页面存在推特链接时 Preconnect（L1）</span>
+          </label>
+          <label class="check">
+            <input type="checkbox" name="enableL2Hover" id="enableL2Hover" />
+            <span>启用悬停意图检测（L2）</span>
+          </label>
+          <label class="field">
+            <span>悬停触发阈值（毫秒）</span>
+            <input
+              type="number"
+              name="hoverThresholdMs"
+              id="hoverThresholdMs"
+              min="30"
+              max="500"
+              step="10"
+            />
+          </label>
+          <label class="check">
+            <input
+              type="checkbox"
+              name="autoDowngradeOnPowerSave"
+              id="autoDowngradeOnPowerSave"
+            />
+            <span>省电/省流时自动降级（预留开关）</span>
+          </label>
+          <label class="check">
+            <input type="checkbox" name="debugLogging" id="debugLogging" />
+            <span>启用调试日志（会写 storage，日常请关闭）</span>
+          </label>
+        </section>
+
+        <section class="panel">
+          <h2>排除站点</h2>
+          <label class="field">
+            <span>排除域名后缀（逗号分隔，如 example.com, intranet.local）</span>
+            <textarea
+              id="excludedHostSuffixes"
+              rows="3"
+              placeholder="留空表示所有网站生效"
+            ></textarea>
+          </label>
+        </section>
+
+        <div class="footer-actions">
+          <button type="submit" class="btn primary">保存</button>
+          <button type="button" id="btnReset" class="btn">恢复默认</button>
+          <span id="saveMsg" class="save-msg" hidden>已保存</span>
+        </div>
+      </form>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>
