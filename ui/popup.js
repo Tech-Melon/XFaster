@@ -391,12 +391,20 @@ function paintImageSearchToggle(settings) {
       desc.textContent = "已关闭 · 开启后可在外站对图片识图";
       return;
     }
-    const trigger = settings.imageSearchTrigger || "right";
+    const trigger = settings.imageSearchTrigger || "badge";
     const openMode = settings.imageSearchOpenMode || "popup";
     const triggerLabel =
-      trigger === "both" ? "左/右键" : trigger === "left" ? "左键" : "右键";
+      trigger === "badge"
+        ? "点「搜图」按钮"
+        : trigger === "alt_right"
+          ? "Alt+右键"
+          : trigger === "both"
+            ? "左/右键"
+            : trigger === "left"
+              ? "左键"
+              : "右键";
     const modeLabel = openMode === "tab" ? "新标签" : "小窗";
-    desc.textContent = `已开启 · 图上静止后${triggerLabel} · ${modeLabel}打开 Lens`;
+    desc.textContent = `已开启 · 静止后${triggerLabel} · ${modeLabel}`;
   }
 }
 

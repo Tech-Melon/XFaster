@@ -32,8 +32,10 @@ import {
   requestOptionalAllHosts,
 } from "../shared/permissions.js";
 import {
+  installImageSearchContextMenu,
   installImageSearchWindowListener,
   openImageSearch,
+  syncImageSearchContextMenu,
 } from "./image-search.js";
 
 let lastAutoWarmAt = 0;
@@ -46,6 +48,17 @@ installNavCapture();
 installPermissionListeners();
 // 识图小窗关闭时清理单例状态
 installImageSearchWindowListener();
+// 系统右键「谷歌识图」菜单项（不拦截原生「另存为」等）
+installImageSearchContextMenu(getSettings);
+
+async function refreshImageSearchMenuFromSettings() {
+  try {
+    const s = await getSettings();
+    await syncImageSearchContextMenu(Boolean(s.enableImageSearch));
+  } catch {
+    // ignore
+  }
+}
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === "install") {
@@ -53,6 +66,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   } else {
     await migrateSettingsIfNeeded();
   }
+  await refreshImageSearchMenuFromSettings();
   // 若升级时已有全站权限，补注一次
   try {
     if (await hasOptionalAllHosts()) {
@@ -65,6 +79,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
 chrome.runtime.onStartup.addListener(async () => {
   await migrateSettingsIfNeeded();
+  await refreshImageSearchMenuFromSettings();
   try {
     if (await hasOptionalAllHosts()) {
       await injectContentScriptsIntoOpenTabs();
@@ -74,7 +89,15 @@ chrome.runtime.onStartup.addListener(async () => {
   }
 });
 
-migrateSettingsIfNeeded().catch(() => {});
+migrateSettingsIfNeeded()
+  .then(() => refreshImageSearchMenuFromSettings())
+  .catch(() => {});
+
+// 设置变更时同步系统右键菜单
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "sync" || !changes.settings) return;
+  refreshImageSearchMenuFromSettings().catch(() => {});
+});
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === ALARM_NAMES.WARM_EXPIRE) {
@@ -193,6 +216,7 @@ async function handleMessage(message, sender) {
     case MSG.SET_IMAGE_SEARCH_ENABLED: {
       const enabled = Boolean(message.enabled);
       const next = await saveSettings({ enableImageSearch: enabled });
+      await syncImageSearchContextMenu(Boolean(next.enableImageSearch));
       await debugLog("img", "SET_IMAGE_SEARCH_ENABLED", { enabled });
       return { ok: true, enableImageSearch: next.enableImageSearch };
     }

@@ -58,7 +58,11 @@ export function normalizeSettings(raw = {}) {
     Number.isFinite(minSize) && minSize >= 24 && minSize <= 400
       ? Math.round(minSize)
       : DEFAULT_SETTINGS.imageSearchMinSize;
-  if (!["right", "left", "both"].includes(merged.imageSearchTrigger)) {
+  if (
+    !["badge", "alt_right", "right", "left", "both"].includes(
+      merged.imageSearchTrigger,
+    )
+  ) {
     merged.imageSearchTrigger = DEFAULT_SETTINGS.imageSearchTrigger;
   }
   if (!["popup", "tab"].includes(merged.imageSearchOpenMode)) {
@@ -118,7 +122,7 @@ function clampTtl(v, fallback = 20) {
  */
 export async function migrateSettingsIfNeeded() {
   const data = await chrome.storage.sync.get(STORAGE_KEYS.SETTINGS);
-  const raw = data[STORAGE_KEYS.SETTINGS];
+  let raw = data[STORAGE_KEYS.SETTINGS];
 
   if (!raw || typeof raw !== "object") {
     const fresh = {
@@ -126,9 +130,28 @@ export async function migrateSettingsIfNeeded() {
       _perfV3: true,
       _ttl20: true,
       _balanceV5: true,
+      _imgBadgeV1: true,
     };
     await chrome.storage.sync.set({ [STORAGE_KEYS.SETTINGS]: fresh });
     return normalizeSettings(fresh);
+  }
+
+  // 0.5.23：旧默认「拦截右键」会挡另存为，一次性改为 badge（不抢菜单）
+  if (raw._imgBadgeV1 !== true) {
+    raw = {
+      ...raw,
+      imageSearchTrigger:
+        raw.imageSearchTrigger === "right" || !raw.imageSearchTrigger
+          ? "badge"
+          : raw.imageSearchTrigger,
+      _imgBadgeV1: true,
+    };
+    // 已完成 balance 迁移的用户：只写回识图触发，直接返回
+    if (raw._balanceV5 === true) {
+      const patched = normalizeSettings(raw);
+      await chrome.storage.sync.set({ [STORAGE_KEYS.SETTINGS]: patched });
+      return patched;
+    }
   }
 
   if (raw._balanceV5 === true) {
@@ -144,6 +167,7 @@ export async function migrateSettingsIfNeeded() {
       _perfV3: true,
       _ttl20: true,
       _balanceV5: true,
+      _imgBadgeV1: true,
     });
     await chrome.storage.sync.set({ [STORAGE_KEYS.SETTINGS]: next });
     return next;
@@ -173,9 +197,11 @@ export async function migrateSettingsIfNeeded() {
   const final = normalizeSettings({
     ...applied,
     turboTtlMinutes: ttl,
+    imageSearchTrigger: raw.imageSearchTrigger || "badge",
     _perfV3: true,
     _ttl20: true,
     _balanceV5: true,
+    _imgBadgeV1: true,
   });
 
   await chrome.storage.sync.set({ [STORAGE_KEYS.SETTINGS]: final });

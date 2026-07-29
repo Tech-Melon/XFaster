@@ -123,14 +123,17 @@ export const DEFAULT_SETTINGS = {
    * - enableImageSearch：总开关（弹窗一键）
    * - imageSearchDwellMs：鼠标静止多久后判定瞄图
    * - imageSearchMinSize：忽略过小的图标
-   * - imageSearchTrigger：right | left | both
+   * - imageSearchTrigger：
+   *   badge（默认，浮动按钮，不抢右键）|
+   *   alt_right（Alt+右键）|
+   *   right / left / both（拦截对应键，会挡原生菜单）
    * - imageSearchOpenMode：popup 小窗 | tab 新标签
    * - imageSearchEngine：lens | google_images
    */
   enableImageSearch: false,
   imageSearchDwellMs: 350,
   imageSearchMinSize: 80,
-  imageSearchTrigger: "right",
+  imageSearchTrigger: "badge",
   imageSearchOpenMode: "popup",
   imageSearchEngine: "lens",
 };

@@ -171,13 +171,20 @@
             />
           </label>
           <label class="field">
-            <span>触发键</span>
+            <span>触发方式</span>
             <select name="imageSearchTrigger" id="imageSearchTrigger">
-              <option value="right">仅右键（推荐，少误伤）</option>
-              <option value="left">仅左键</option>
-              <option value="both">左键 + 右键</option>
+              <option value="badge">
+                浮动「搜图」按钮（默认，不拦截系统右键）
+              </option>
+              <option value="alt_right">Alt + 右键搜图（普通右键保留菜单）</option>
+              <option value="right">拦截右键搜图（会挡住另存为等）</option>
+              <option value="left">拦截左键搜图</option>
+              <option value="both">拦截左键 + 右键</option>
             </select>
           </label>
+          <p class="hint">
+            开启识图后，系统右键菜单会额外多一项「谷歌识图（XFaster）」，与上面触发方式并存；保存图片等原生项不受影响。
+          </p>
           <label class="field">
             <span>结果打开方式</span>
             <select name="imageSearchOpenMode" id="imageSearchOpenMode">

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tech Melon XFaster",
-  "version": "0.5.22",
+  "version": "0.5.28",
   "description": "从网页更快打开 X：外站拦截不伤 X 站内导航；热壳复用；可选谷歌识图。",
   "icons": {
     "16": "assets/icons/icon16.png",
@@ -80,7 +80,8 @@
     "scripting",
     "webNavigation",
     "activeTab",
-    "windows"
+    "windows",
+    "contextMenus"
   ],
   "host_permissions": [
     "*://x.com/*",
