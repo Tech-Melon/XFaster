@@ -50,10 +50,15 @@
   /**
    * 文本/属性中的 X URL 正则
    * 支持 https://x.com/...  x.com/...  twitter.com/...  t.co/...
+   *
+   * ★ 主机边界（lookbehind / lookahead）：
+   * 禁止把 somethingx.com / x.com.evil.com 里的子串误判为 x.com
+   * （旧版无边界时，evilx.com/status/1 会抽出 x.com/status/1）
    */
   const X_URL_RE =
-    /(?:https?:\/\/)?(?:(?:www|mobile)\.)?(?:x\.com|twitter\.com)\/[^\s<>"'`)\]]+/i;
-  const TCO_RE = /(?:https?:\/\/)?t\.co\/[A-Za-z0-9]+/i;
+    /(?:https?:\/\/)?(?:(?:www|mobile)\.)?(?<![a-zA-Z0-9-])(?:x\.com|twitter\.com)(?![a-zA-Z0-9.-])\/[^\s<>"'`)\]]+/i;
+  const TCO_RE =
+    /(?:https?:\/\/)?(?<![a-zA-Z0-9-])t\.co(?![a-zA-Z0-9.-])\/[A-Za-z0-9]+/i;
 
   /** @type {any} */
   let settings = {

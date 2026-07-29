@@ -46,7 +46,8 @@
         h === "t.co"
       );
     } catch {
-      return /(?:^|\/\/)(?:(?:www|mobile)\.)?(?:x\.com|twitter\.com)|(?:^|\/\/)t\.co\//i.test(
+      // 主机边界：禁止 //somethingx.com 或 //x.com.evil 被当成 x.com
+      return /(?:^|\/\/)(?:(?:www|mobile)\.)?(?:x\.com|twitter\.com)(?![a-zA-Z0-9.-])|(?:^|\/\/)t\.co(?![a-zA-Z0-9.-])\//i.test(
         String(url || ""),
       );
     }
