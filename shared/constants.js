@@ -24,6 +24,10 @@ export const MSG = {
   GET_PERMISSIONS: "GET_PERMISSIONS",
   REQUEST_OPTIONAL_HOSTS: "REQUEST_OPTIONAL_HOSTS",
   INJECT_AFTER_GRANT: "INJECT_AFTER_GRANT",
+  /** 谷歌识图：content → background */
+  IMAGE_SEARCH: "IMAGE_SEARCH",
+  /** 弹窗一键开关识图 */
+  SET_IMAGE_SEARCH_ENABLED: "SET_IMAGE_SEARCH_ENABLED",
 };
 
 export const PRECONNECT_ORIGINS = [
@@ -113,6 +117,22 @@ export const DEFAULT_SETTINGS = {
   debugLogging: false,
 
   excludedHostSuffixes: [],
+
+  /**
+   * 谷歌识图（旁路功能，与 X 加速隔离）
+   * - enableImageSearch：总开关（弹窗一键）
+   * - imageSearchDwellMs：鼠标静止多久后判定瞄图
+   * - imageSearchMinSize：忽略过小的图标
+   * - imageSearchTrigger：right | left | both
+   * - imageSearchOpenMode：popup 小窗 | tab 新标签
+   * - imageSearchEngine：lens | google_images
+   */
+  enableImageSearch: false,
+  imageSearchDwellMs: 350,
+  imageSearchMinSize: 80,
+  imageSearchTrigger: "right",
+  imageSearchOpenMode: "popup",
+  imageSearchEngine: "lens",
 };
 
 export const TTL_OPTIONS = [1, 3, 5, 10, 20, 30, 45, 60];

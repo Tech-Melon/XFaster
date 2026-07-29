@@ -136,6 +136,65 @@
         </section>
 
         <section class="panel">
+          <h2>谷歌识图</h2>
+          <p class="hint">
+            与打开 X 加速相互独立。弹窗可一键开关；此处为详细参数。需已授权站点权限（全站或当前站）才会注入页面脚本。
+          </p>
+          <label class="check">
+            <input
+              type="checkbox"
+              name="enableImageSearch"
+              id="enableImageSearch"
+            />
+            <span>启用谷歌识图（总开关，与弹窗同步）</span>
+          </label>
+          <label class="field">
+            <span>鼠标静止多久后瞄准图片（毫秒）</span>
+            <input
+              type="number"
+              name="imageSearchDwellMs"
+              id="imageSearchDwellMs"
+              min="120"
+              max="2000"
+              step="10"
+            />
+          </label>
+          <label class="field">
+            <span>最小图片边长（像素，忽略小图标）</span>
+            <input
+              type="number"
+              name="imageSearchMinSize"
+              id="imageSearchMinSize"
+              min="24"
+              max="400"
+              step="1"
+            />
+          </label>
+          <label class="field">
+            <span>触发键</span>
+            <select name="imageSearchTrigger" id="imageSearchTrigger">
+              <option value="right">仅右键（推荐，少误伤）</option>
+              <option value="left">仅左键</option>
+              <option value="both">左键 + 右键</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>结果打开方式</span>
+            <select name="imageSearchOpenMode" id="imageSearchOpenMode">
+              <option value="popup">独立小弹窗（单例复用，推荐）</option>
+              <option value="tab">浏览器新标签</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>识图引擎</span>
+            <select name="imageSearchEngine" id="imageSearchEngine">
+              <option value="lens">Google Lens（uploadbyurl）</option>
+              <option value="google_images">Google 以图搜图（经典）</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="panel">
           <h2>排除站点</h2>
           <label class="field">
             <span>排除域名后缀（逗号分隔，如 example.com, intranet.local）</span>
@@ -145,6 +204,7 @@
               placeholder="留空表示所有网站生效"
             ></textarea>
           </label>
+          <p class="hint">排除后：该站不拦截 X 链接，也不启用识图瞄准。</p>
         </section>
 
         <div class="footer-actions">

@@ -37,6 +37,13 @@ function fillForm(settings) {
   $("autoDowngradeOnPowerSave").checked = settings.autoDowngradeOnPowerSave;
   $("debugLogging").checked = settings.debugLogging;
 
+  $("enableImageSearch").checked = settings.enableImageSearch;
+  $("imageSearchDwellMs").value = String(settings.imageSearchDwellMs);
+  $("imageSearchMinSize").value = String(settings.imageSearchMinSize);
+  $("imageSearchTrigger").value = settings.imageSearchTrigger;
+  $("imageSearchOpenMode").value = settings.imageSearchOpenMode;
+  $("imageSearchEngine").value = settings.imageSearchEngine;
+
   $("excludedHostSuffixes").value = (settings.excludedHostSuffixes || []).join(
     ", ",
   );
@@ -68,6 +75,12 @@ function readForm() {
     hoverThresholdMs: Number($("hoverThresholdMs").value),
     autoDowngradeOnPowerSave: $("autoDowngradeOnPowerSave").checked,
     debugLogging: $("debugLogging").checked,
+    enableImageSearch: $("enableImageSearch").checked,
+    imageSearchDwellMs: Number($("imageSearchDwellMs").value),
+    imageSearchMinSize: Number($("imageSearchMinSize").value),
+    imageSearchTrigger: $("imageSearchTrigger").value,
+    imageSearchOpenMode: $("imageSearchOpenMode").value,
+    imageSearchEngine: $("imageSearchEngine").value,
     excludedHostSuffixes: excluded,
   };
 }

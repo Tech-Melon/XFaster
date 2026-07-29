@@ -31,6 +31,10 @@ import {
   installPermissionListeners,
   requestOptionalAllHosts,
 } from "../shared/permissions.js";
+import {
+  installImageSearchWindowListener,
+  openImageSearch,
+} from "./image-search.js";
 
 let lastAutoWarmAt = 0;
 const AUTO_WARM_DEBOUNCE_MS = 8000;
@@ -40,6 +44,8 @@ setOpenHandler((opts) => openXUrl(opts));
 installNavCapture();
 // 用户授权全站/单站后，自动给已开标签补注入 content 脚本
 installPermissionListeners();
+// 识图小窗关闭时清理单例状态
+installImageSearchWindowListener();
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === "install") {
@@ -173,10 +179,41 @@ async function handleMessage(message, sender) {
           enableL1Preconnect: settings.enableL1Preconnect,
           enableL2Hover: settings.enableL2Hover,
           debugLogging: settings.debugLogging,
+          enableImageSearch: settings.enableImageSearch,
+          imageSearchDwellMs: settings.imageSearchDwellMs,
+          imageSearchTrigger: settings.imageSearchTrigger,
+          imageSearchOpenMode: settings.imageSearchOpenMode,
+          imageSearchEngine: settings.imageSearchEngine,
         },
         warm,
         debug,
       };
+    }
+
+    case MSG.SET_IMAGE_SEARCH_ENABLED: {
+      const enabled = Boolean(message.enabled);
+      const next = await saveSettings({ enableImageSearch: enabled });
+      await debugLog("img", "SET_IMAGE_SEARCH_ENABLED", { enabled });
+      return { ok: true, enableImageSearch: next.enableImageSearch };
+    }
+
+    case MSG.IMAGE_SEARCH: {
+      if (!settings.enableImageSearch) {
+        return { ok: false, reason: "disabled" };
+      }
+      const result = await openImageSearch({
+        imageUrl: message.imageUrl,
+        screenX: message.screenX,
+        screenY: message.screenY,
+        openMode: settings.imageSearchOpenMode,
+        engine: settings.imageSearchEngine,
+      });
+      await debugLog("img", "IMAGE_SEARCH", {
+        ok: result.ok,
+        mode: result.mode,
+        reason: result.reason,
+      });
+      return result;
     }
 
     case MSG.GET_DEBUG_LOG: {

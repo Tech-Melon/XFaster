@@ -26,6 +26,8 @@ const $ = (id) => document.getElementById(id);
 
 let currentProfile = "balanced";
 let grantBusy = false;
+let imageSearchEnabled = false;
+let imageSearchBusy = false;
 
 function showToast(text) {
   const el = $("toast");
@@ -221,6 +223,7 @@ async function paintStatus() {
 
     const { settings, warm, debug } = res;
     setProfileButtons(settings.warmupProfile || "balanced");
+    paintImageSearchToggle(settings);
     if ($("openModeText")) {
       $("openModeText").textContent =
         openModeLabel[settings.openMode] || settings.openMode || "—";
@@ -368,6 +371,69 @@ $("btnOptions")?.addEventListener("click", () => {
   chrome.runtime.openOptionsPage();
 });
 
+$("btnImageSearchOptions")?.addEventListener("click", () => {
+  chrome.runtime.openOptionsPage();
+});
+
+/**
+ * @param {any} settings
+ */
+function paintImageSearchToggle(settings) {
+  imageSearchEnabled = Boolean(settings?.enableImageSearch);
+  const btn = $("btnImageSearch");
+  const desc = $("imageSearchDesc");
+  if (btn) {
+    btn.setAttribute("aria-checked", imageSearchEnabled ? "true" : "false");
+    btn.classList.toggle("on", imageSearchEnabled);
+  }
+  if (desc) {
+    if (!imageSearchEnabled) {
+      desc.textContent = "已关闭 · 开启后可在外站对图片识图";
+      return;
+    }
+    const trigger = settings.imageSearchTrigger || "right";
+    const openMode = settings.imageSearchOpenMode || "popup";
+    const triggerLabel =
+      trigger === "both" ? "左/右键" : trigger === "left" ? "左键" : "右键";
+    const modeLabel = openMode === "tab" ? "新标签" : "小窗";
+    desc.textContent = `已开启 · 图上静止后${triggerLabel} · ${modeLabel}打开 Lens`;
+  }
+}
+
+$("btnImageSearch")?.addEventListener("click", async () => {
+  if (imageSearchBusy) return;
+  imageSearchBusy = true;
+  const btn = $("btnImageSearch");
+  if (btn) btn.disabled = true;
+  const next = !imageSearchEnabled;
+  try {
+    const res = await withTimeout(
+      chrome.runtime.sendMessage({
+        type: MSG.SET_IMAGE_SEARCH_ENABLED,
+        enabled: next,
+      }),
+      3000,
+      null,
+    );
+    if (res?.ok) {
+      imageSearchEnabled = Boolean(res.enableImageSearch);
+      paintImageSearchToggle({
+        enableImageSearch: imageSearchEnabled,
+      });
+      showToast(imageSearchEnabled ? "谷歌识图已开启" : "谷歌识图已关闭");
+      // 再刷一次完整状态（含 trigger 描述）
+      await paintStatus();
+    } else {
+      showToast("开关失败");
+    }
+  } catch {
+    showToast("开关失败");
+  } finally {
+    imageSearchBusy = false;
+    if (btn) btn.disabled = false;
+  }
+});
+
 $("btnClearDebug")?.addEventListener("click", async () => {
   try {
     await chrome.runtime.sendMessage({ type: MSG.CLEAR_DEBUG_LOG });
@@ -448,6 +514,10 @@ $("btnGrantCurrent")?.addEventListener("click", async (e) => {
         await chrome.scripting.executeScript({
           target: { tabId: info.tabId },
           files: ["content/link-observer.js"],
+        });
+        await chrome.scripting.executeScript({
+          target: { tabId: info.tabId },
+          files: ["content/image-search-hover.js"],
         });
         showToast(`已授权并注入：${info.origin}`);
       } catch {

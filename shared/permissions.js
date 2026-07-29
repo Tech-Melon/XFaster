@@ -124,6 +124,12 @@ export async function injectContentScriptsIntoTab(tabId) {
     world: "ISOLATED",
     injectImmediately: true,
   });
+  await chrome.scripting.executeScript({
+    target: { tabId, allFrames: true },
+    files: ["content/image-search-hover.js"],
+    world: "ISOLATED",
+    injectImmediately: true,
+  });
 }
 
 /**

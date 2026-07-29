@@ -46,6 +46,28 @@ export function normalizeSettings(raw = {}) {
   merged.respectModifierClicks = Boolean(merged.respectModifierClicks);
   merged.debugLogging = Boolean(merged.debugLogging);
 
+  // —— 谷歌识图 ——
+  merged.enableImageSearch = Boolean(merged.enableImageSearch);
+  const dwell = Number(merged.imageSearchDwellMs);
+  merged.imageSearchDwellMs =
+    Number.isFinite(dwell) && dwell >= 120 && dwell <= 2000
+      ? Math.round(dwell)
+      : DEFAULT_SETTINGS.imageSearchDwellMs;
+  const minSize = Number(merged.imageSearchMinSize);
+  merged.imageSearchMinSize =
+    Number.isFinite(minSize) && minSize >= 24 && minSize <= 400
+      ? Math.round(minSize)
+      : DEFAULT_SETTINGS.imageSearchMinSize;
+  if (!["right", "left", "both"].includes(merged.imageSearchTrigger)) {
+    merged.imageSearchTrigger = DEFAULT_SETTINGS.imageSearchTrigger;
+  }
+  if (!["popup", "tab"].includes(merged.imageSearchOpenMode)) {
+    merged.imageSearchOpenMode = DEFAULT_SETTINGS.imageSearchOpenMode;
+  }
+  if (!["lens", "google_images"].includes(merged.imageSearchEngine)) {
+    merged.imageSearchEngine = DEFAULT_SETTINGS.imageSearchEngine;
+  }
+
   if (typeof merged.warmEntryUrl !== "string" || !merged.warmEntryUrl) {
     merged.warmEntryUrl = DEFAULT_SETTINGS.warmEntryUrl;
   }
