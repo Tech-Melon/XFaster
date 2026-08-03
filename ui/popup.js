@@ -1,5 +1,5 @@
 /**
- * 弹窗：初始化绝不卡死；授权按钮始终可点
+ * 弹窗：初始化绝不卡死；授权按钮始终可点；中英切换
  */
 import { MSG, WARMUP_PROFILES, PROFILE_ORDER } from "../shared/constants.js";
 import {
@@ -9,25 +9,30 @@ import {
   requestOptionalAllHosts,
   requestOrigin,
 } from "../shared/permissions.js";
-
-const profileLabel = {
-  eco: "节能",
-  balanced: "均衡",
-  fast: "快速",
-  turbo: "极速",
-};
-
-const openModeLabel = {
-  new_tab: "无壳时新标签",
-  current_tab: "当前标签",
-};
+import {
+  applyDomI18n,
+  langToggleLabel,
+  langToggleTitle,
+  normalizeLang,
+  otherLang,
+  profileName,
+  t,
+} from "../shared/i18n.js";
+import { getSettings, saveSettings } from "../shared/settings.js";
 
 const $ = (id) => document.getElementById(id);
 
+/** @type {import("../shared/i18n.js").UiLang} */
+let uiLang = "zh";
 let currentProfile = "balanced";
 let grantBusy = false;
 let imageSearchEnabled = false;
 let imageSearchBusy = false;
+let langBusy = false;
+
+function tr(key, vars) {
+  return t(uiLang, key, vars);
+}
 
 function showToast(text) {
   const el = $("toast");
@@ -48,50 +53,78 @@ function withTimeout(promise, ms, fallback) {
   ]);
 }
 
+function paintLangToggle() {
+  const btn = $("btnLangToggle");
+  if (!btn) return;
+  btn.textContent = langToggleLabel(uiLang);
+  btn.title = langToggleTitle(uiLang);
+  btn.setAttribute("aria-label", langToggleTitle(uiLang));
+}
+
+function paintStaticI18n() {
+  applyDomI18n(document, uiLang);
+  paintLangToggle();
+  const grid = $("profileGrid");
+  if (grid) grid.setAttribute("aria-label", tr("popup.profileAria"));
+  for (const id of PROFILE_ORDER) {
+    const btn = document.querySelector(`[data-profile="${id}"]`);
+    if (btn) btn.textContent = profileName(uiLang, id);
+  }
+}
+
 function setProfileButtons(activeId) {
   currentProfile = activeId || "balanced";
   for (const id of PROFILE_ORDER) {
     const btn = document.querySelector(`[data-profile="${id}"]`);
-    if (btn) btn.classList.toggle("active", id === currentProfile);
+    if (btn) {
+      btn.classList.toggle("active", id === currentProfile);
+      btn.textContent = profileName(uiLang, id);
+    }
   }
   const p = WARMUP_PROFILES[currentProfile];
   const desc = $("profileDesc");
   const badge = $("profileBadge");
   const sub = $("subTitle");
+  const profileDesc = tr(`profile.desc.${currentProfile}`);
   if (desc) {
     desc.textContent = p
-      ? `${p.desc} · TTL ${p.ttlMinutes} 分钟`
+      ? tr("profile.descLine", {
+          desc: profileDesc,
+          ttl: p.ttlMinutes,
+        })
       : "—";
   }
-  if (badge) badge.textContent = profileLabel[currentProfile] || currentProfile;
+  if (badge) badge.textContent = profileName(uiLang, currentProfile);
   if (sub) {
-    sub.textContent = `${profileLabel[currentProfile] || currentProfile} · Tech Melon`;
+    sub.textContent = tr("app.brandSub", {
+      profile: profileName(uiLang, currentProfile),
+    });
   }
 }
 
 function formatRemaining(sec) {
   const n = Number(sec) || 0;
-  if (n <= 0) return "已到期";
-  if (n < 60) return `${n} 秒`;
+  if (n <= 0) return tr("ttl.expired");
+  if (n < 60) return tr("ttl.sec", { n });
   const m = Math.floor(n / 60);
   const s = n % 60;
-  return s ? `${m} 分 ${s} 秒` : `${m} 分钟`;
+  return s ? tr("ttl.minSec", { m, s }) : tr("ttl.min", { m });
 }
 
 function describeLastOpen(last) {
-  if (!last) return "尚未通过扩展打开过";
+  if (!last) return tr("last.none");
   const mode = last.mode || "?";
   if (mode === "spa_soft" || mode === "spa_soft_existing") {
-    return `真 SPA (${last.spaMethod || "ok"})`;
+    return tr("last.spa", { method: last.spaMethod || "ok" });
   }
   if (mode === "activate_same" || mode === "reuse_existing_same") {
-    return "同页激活";
+    return tr("last.same");
   }
-  if (mode === "full_document_navigation") return "整页重载";
-  if (mode === "full_reload_fallback") return "整页回退";
-  if (mode === "new_tab_cold") return "冷开新标签";
+  if (mode === "full_document_navigation") return tr("last.fullNav");
+  if (mode === "full_reload_fallback") return tr("last.fullFallback");
+  if (mode === "new_tab_cold") return tr("last.cold");
   if (mode === "force_reload_same_url" || mode === "stale_same_url_reload") {
-    return "强制刷新";
+    return tr("last.force");
   }
   return mode;
 }
@@ -103,9 +136,10 @@ async function getActiveTabInfo() {
       800,
       [],
     );
-    const tab = (tabs || []).find(
-      (t) => t?.url && !String(t.url).startsWith("chrome-extension://"),
-    ) || (tabs || [])[0];
+    const tab =
+      (tabs || []).find(
+        (t) => t?.url && !String(t.url).startsWith("chrome-extension://"),
+      ) || (tabs || [])[0];
     if (!tab?.url) return { origin: "", tabId: tab?.id };
     try {
       const u = new URL(tab.url);
@@ -145,44 +179,37 @@ async function paintPermUi() {
 
   if (siteEl) {
     siteEl.textContent = origin
-      ? `当前站：${origin}`
-      : "当前站：请先打开普通 https 网页";
+      ? tr("perm.site", { origin })
+      : tr("perm.site.none");
   }
 
   if (allGranted) {
     block.classList.add("granted");
     if (badge) {
-      badge.textContent = "全站已授权";
+      badge.textContent = tr("perm.badge.all");
       badge.classList.add("ok");
     }
-    if (text) {
-      text.textContent =
-        "已授权全部网站，外站点击 X 将页面内拦截。若仍闪标签，请刷新该外站一次。";
-    }
+    if (text) text.textContent = tr("perm.text.granted");
     if (btnAll && !grantBusy) {
       btnAll.disabled = true;
-      btnAll.textContent = "全站权限已开启";
+      btnAll.textContent = tr("perm.btn.allOn");
     }
     if (btnCur && !grantBusy) {
       btnCur.disabled = true;
-      btnCur.textContent = "已包含当前站";
+      btnCur.textContent = tr("perm.btn.currentIncluded");
     }
     return;
   }
 
   block.classList.remove("granted");
   if (badge) {
-    badge.textContent = "未授权全站";
+    badge.textContent = tr("perm.badge.none");
     badge.classList.remove("ok");
   }
-  if (text) {
-    text.textContent =
-      "未授权时外站可能先开冷 X 再合并热壳。点「一键授权所有网站」后，现在与未来未知站均可页面内拦截。";
-  }
-  // 未授权：全站按钮必须可点
+  if (text) text.textContent = tr("perm.text.none");
   if (btnAll && !grantBusy) {
     btnAll.disabled = false;
-    btnAll.textContent = "一键授权所有网站";
+    btnAll.textContent = tr("perm.btn.all");
   }
 
   let curOk = false;
@@ -196,11 +223,13 @@ async function paintPermUi() {
   if (btnCur && !grantBusy) {
     if (!origin) {
       btnCur.disabled = true;
-      btnCur.textContent = "授权当前网站";
+      btnCur.textContent = tr("perm.btn.current");
     } else {
       btnCur.disabled = !!curOk;
-      btnCur.textContent = curOk ? "当前站已授权" : "授权当前网站";
-      if (curOk && badge) badge.textContent = "仅当前站";
+      btnCur.textContent = curOk
+        ? tr("perm.btn.currentOn")
+        : tr("perm.btn.current");
+      if (curOk && badge) badge.textContent = tr("perm.badge.currentOnly");
     }
   }
 }
@@ -214,19 +243,26 @@ async function paintStatus() {
       null,
     );
     if (!res || !res.ok) {
-      if (hint) {
-        hint.textContent =
-          "后台暂无响应。授权按钮仍可点。也可到 chrome://extensions 重新加载扩展。";
-      }
+      if (hint) hint.textContent = tr("hint.bgDead");
       return;
     }
 
     const { settings, warm, debug } = res;
+    if (settings?.uiLang) {
+      const next = normalizeLang(settings.uiLang);
+      if (next !== uiLang) {
+        uiLang = next;
+        paintStaticI18n();
+      }
+    }
     setProfileButtons(settings.warmupProfile || "balanced");
     paintImageSearchToggle(settings);
     if ($("openModeText")) {
+      const mode = settings.openMode;
       $("openModeText").textContent =
-        openModeLabel[settings.openMode] || settings.openMode || "—";
+        mode === "current_tab"
+          ? tr("openMode.current_tab")
+          : tr("openMode.new_tab");
     }
     if ($("urlText")) {
       $("urlText").textContent = describeLastOpen(warm?.lastOpen);
@@ -236,12 +272,13 @@ async function paintStatus() {
     if (settings.debugLogging && debugPanel) {
       debugPanel.hidden = false;
       if ($("debugLog")) {
-        $("debugLog").textContent = (debug || [])
-          .slice()
-          .reverse()
-          .slice(0, 20)
-          .map((l) => `[${l.tag}] ${l.message}`)
-          .join("\n") || "无日志";
+        $("debugLog").textContent =
+          (debug || [])
+            .slice()
+            .reverse()
+            .slice(0, 20)
+            .map((l) => `[${l.tag}] ${l.message}`)
+            .join("\n") || tr("debug.empty");
       }
     } else if (debugPanel) {
       debugPanel.hidden = true;
@@ -251,50 +288,49 @@ async function paintStatus() {
     const ttlRow = $("ttlRow");
     if (warm?.phase === "shell_ready" || warm?.shellReady) {
       if (warmEl) {
-        warmEl.textContent = "壳已热";
+        warmEl.textContent = tr("warm.ready");
         warmEl.className = "value ok";
       }
       if (ttlRow) ttlRow.hidden = false;
       if ($("ttlText")) {
         $("ttlText").textContent = formatRemaining(warm.remainingSec || 0);
       }
-      if (hint) {
-        hint.textContent =
-          "当前有热壳。请先完成上方全站授权，外站点击才不会闪冷标签。";
-      }
+      if (hint) hint.textContent = tr("hint.warmReady");
     } else if (warm?.phase === "shell_loading") {
       if (warmEl) {
-        warmEl.textContent = "壳加载中…";
+        warmEl.textContent = tr("warm.loading");
         warmEl.className = "value warn";
       }
       if (ttlRow) ttlRow.hidden = false;
       if ($("ttlText")) {
         $("ttlText").textContent = formatRemaining(warm.remainingSec || 0);
       }
-      if (hint) hint.textContent = "暖壳中…";
+      if (hint) hint.textContent = tr("hint.warming");
     } else {
       if (warmEl) {
         warmEl.textContent = settings.allowBackgroundWarmTab
-          ? "无热壳 / 等待暖壳"
-          : "节能·不暖壳";
+          ? tr("warm.none")
+          : tr("warm.eco");
         warmEl.className = "value";
       }
       if (ttlRow) ttlRow.hidden = true;
-      if (hint) {
-        hint.textContent = "可点「立即预热」。外站无闪体验需上方「全站已授权」。";
-      }
+      if (hint) hint.textContent = tr("hint.idle");
     }
   } catch {
-    if (hint) {
-      hint.textContent =
-        "状态读取失败。请重新加载扩展。授权按钮仍可使用。";
-    }
+    if (hint) hint.textContent = tr("hint.statusFail");
   }
 }
 
 async function refreshAll() {
-  // 并行，互不阻塞按钮
   await Promise.all([paintPermUi(), paintStatus()]);
+}
+
+async function applyUiLang(nextLang, { toast = true } = {}) {
+  uiLang = normalizeLang(nextLang);
+  paintStaticI18n();
+  setProfileButtons(currentProfile);
+  await refreshAll();
+  if (toast) showToast(tr("toast.lang"));
 }
 
 // —— 事件：先绑再刷 ——
@@ -303,7 +339,9 @@ for (const id of PROFILE_ORDER) {
   if (btn) {
     btn.addEventListener("click", async () => {
       if (id === currentProfile) {
-        showToast(`已是「${profileLabel[id]}」`);
+        showToast(
+          tr("toast.alreadyProfile", { name: profileName(uiLang, id) }),
+        );
         return;
       }
       try {
@@ -314,15 +352,32 @@ for (const id of PROFILE_ORDER) {
         );
         if (res?.ok) {
           setProfileButtons(id);
-          showToast(`已切换：${profileLabel[id]}`);
+          showToast(tr("toast.switched", { name: profileName(uiLang, id) }));
           await refreshAll();
-        } else showToast("切换失败");
+        } else showToast(tr("toast.switchFail"));
       } catch {
-        showToast("切换失败");
+        showToast(tr("toast.switchFail"));
       }
     });
   }
 }
+
+$("btnLangToggle")?.addEventListener("click", async () => {
+  if (langBusy) return;
+  langBusy = true;
+  const btn = $("btnLangToggle");
+  if (btn) btn.disabled = true;
+  try {
+    const next = otherLang(uiLang);
+    await saveSettings({ uiLang: next });
+    await applyUiLang(next, { toast: true });
+  } catch {
+    showToast(tr("toast.opFail"));
+  } finally {
+    langBusy = false;
+    if (btn) btn.disabled = false;
+  }
+});
 
 $("btnOpen")?.addEventListener("click", async () => {
   try {
@@ -331,10 +386,10 @@ $("btnOpen")?.addEventListener("click", async () => {
       5000,
       null,
     );
-    showToast(res?.ok ? res.mode || "已打开" : "打开失败");
+    showToast(res?.ok ? res.mode || tr("toast.openOk") : tr("toast.openFail"));
     await refreshAll();
   } catch {
-    showToast("打开失败");
+    showToast(tr("toast.openFail"));
   }
 });
 
@@ -345,11 +400,17 @@ $("btnWarm")?.addEventListener("click", async () => {
       5000,
       null,
     );
-    if (res?.ok) showToast(res.created ? "正在暖壳…" : "壳已在");
-    else showToast(res?.reason === "disabled" ? "请先切均衡/快速/极速" : "预热失败");
+    if (res?.ok) showToast(res.created ? tr("toast.warming") : tr("toast.shellThere"));
+    else {
+      showToast(
+        res?.reason === "disabled"
+          ? tr("toast.warmNeedProfile")
+          : tr("toast.warmFail"),
+      );
+    }
     await refreshAll();
   } catch {
-    showToast("预热失败");
+    showToast(tr("toast.warmFail"));
   }
 });
 
@@ -360,10 +421,10 @@ $("btnRelease")?.addEventListener("click", async () => {
       3000,
       null,
     );
-    showToast(res?.released ? "已释放热壳" : "无热壳");
+    showToast(res?.released ? tr("toast.released") : tr("toast.noShell"));
     await refreshAll();
   } catch {
-    showToast("操作失败");
+    showToast(tr("toast.opFail"));
   }
 });
 
@@ -388,23 +449,26 @@ function paintImageSearchToggle(settings) {
   }
   if (desc) {
     if (!imageSearchEnabled) {
-      desc.textContent = "已关闭 · 开启后可在外站对图片识图";
+      desc.textContent = tr("img.desc.off");
       return;
     }
     const trigger = settings.imageSearchTrigger || "badge";
     const openMode = settings.imageSearchOpenMode || "popup";
-    const triggerLabel =
-      trigger === "badge"
-        ? "点「搜图」按钮"
-        : trigger === "alt_right"
-          ? "Alt+右键"
-          : trigger === "both"
-            ? "左/右键"
-            : trigger === "left"
-              ? "左键"
-              : "右键";
-    const modeLabel = openMode === "tab" ? "新标签" : "小窗";
-    desc.textContent = `已开启 · 静止后${triggerLabel} · ${modeLabel}`;
+    const triggerKey = [
+      "badge",
+      "alt_right",
+      "both",
+      "left",
+      "right",
+    ].includes(trigger)
+      ? `img.trigger.${trigger}`
+      : "img.trigger.badge";
+    const modeKey =
+      openMode === "tab" ? "img.mode.tab" : "img.mode.popup";
+    desc.textContent = tr("img.desc.on", {
+      trigger: tr(triggerKey),
+      mode: tr(modeKey),
+    });
   }
 }
 
@@ -428,14 +492,13 @@ $("btnImageSearch")?.addEventListener("click", async () => {
       paintImageSearchToggle({
         enableImageSearch: imageSearchEnabled,
       });
-      showToast(imageSearchEnabled ? "谷歌识图已开启" : "谷歌识图已关闭");
-      // 再刷一次完整状态（含 trigger 描述）
+      showToast(imageSearchEnabled ? tr("toast.imgOn") : tr("toast.imgOff"));
       await paintStatus();
     } else {
-      showToast("开关失败");
+      showToast(tr("toast.toggleFail"));
     }
   } catch {
-    showToast("开关失败");
+    showToast(tr("toast.toggleFail"));
   } finally {
     imageSearchBusy = false;
     if (btn) btn.disabled = false;
@@ -458,15 +521,15 @@ $("btnGrantHosts")?.addEventListener("click", async (e) => {
   const btn = $("btnGrantHosts");
   if (btn) {
     btn.disabled = true;
-    btn.textContent = "请求权限中…";
+    btn.textContent = tr("perm.btn.requesting");
   }
   try {
     const ok = await requestOptionalAllHosts();
     if (!ok) {
-      showToast("未授权或已取消");
+      showToast(tr("toast.grantCancel"));
       return;
     }
-    showToast("已授权，正在注入已开标签…");
+    showToast(tr("toast.grantInjecting"));
     let n = 0;
     try {
       const inject = await withTimeout(
@@ -481,12 +544,14 @@ $("btnGrantHosts")?.addEventListener("click", async (e) => {
     }
     showToast(
       n > 0
-        ? `全站已就绪（注入 ${n} 个标签）`
-        : "全站已授权。请刷新外站网页后再点 X 链接",
+        ? tr("toast.grantReady", { n })
+        : tr("toast.grantRefresh"),
     );
   } catch (err) {
     showToast(
-      `授权异常：${err instanceof Error ? err.message : "请重载扩展"}`,
+      tr("toast.grantErr", {
+        msg: err instanceof Error ? err.message : tr("toast.grantErrReload"),
+      }),
     );
   } finally {
     grantBusy = false;
@@ -499,7 +564,7 @@ $("btnGrantCurrent")?.addEventListener("click", async (e) => {
   if (grantBusy) return;
   const info = await getActiveTabInfo();
   if (!info.origin) {
-    showToast("请先打开普通 https 网页，再点授权当前网站");
+    showToast(tr("toast.needHttps"));
     return;
   }
   grantBusy = true;
@@ -508,7 +573,7 @@ $("btnGrantCurrent")?.addEventListener("click", async (e) => {
   try {
     const ok = await requestOrigin(info.origin);
     if (!ok) {
-      showToast("未授权或已取消");
+      showToast(tr("toast.grantCancel"));
       return;
     }
     if (info.tabId != null) {
@@ -527,15 +592,19 @@ $("btnGrantCurrent")?.addEventListener("click", async (e) => {
           target: { tabId: info.tabId },
           files: ["content/image-search-hover.js"],
         });
-        showToast(`已授权并注入：${info.origin}`);
+        showToast(tr("toast.grantedInject", { origin: info.origin }));
       } catch {
-        showToast(`已授权 ${info.origin}，请刷新该网页`);
+        showToast(tr("toast.grantedRefresh", { origin: info.origin }));
       }
     } else {
-      showToast(`已授权 ${info.origin}`);
+      showToast(tr("toast.grantedOrigin", { origin: info.origin }));
     }
   } catch (err) {
-    showToast(`授权失败：${err instanceof Error ? err.message : "unknown"}`);
+    showToast(
+      tr("toast.grantFail", {
+        msg: err instanceof Error ? err.message : "unknown",
+      }),
+    );
   } finally {
     grantBusy = false;
     await paintPermUi();
@@ -543,18 +612,30 @@ $("btnGrantCurrent")?.addEventListener("click", async (e) => {
 });
 
 // 立即显示默认可点状态，再异步刷新
+paintStaticI18n();
 setProfileButtons("balanced");
-if ($("hint")) {
-  $("hint").textContent = "正在读取状态…授权按钮可直接点击。";
-}
-if ($("permBadge")) $("permBadge").textContent = "未授权全站";
+if ($("hint")) $("hint").textContent = tr("hint.loading");
+if ($("permBadge")) $("permBadge").textContent = tr("perm.badge.none");
 if ($("btnGrantHosts")) {
   $("btnGrantHosts").disabled = false;
-  $("btnGrantHosts").textContent = "一键授权所有网站";
+  $("btnGrantHosts").textContent = tr("perm.btn.all");
 }
 
-paintPermUi();
-paintStatus();
+(async () => {
+  try {
+    const s = await withTimeout(getSettings(), 1200, null);
+    if (s?.uiLang) {
+      uiLang = normalizeLang(s.uiLang);
+      paintStaticI18n();
+      setProfileButtons(s.warmupProfile || currentProfile);
+    }
+  } catch {
+    // ignore
+  }
+  paintPermUi();
+  paintStatus();
+})();
+
 setInterval(() => {
-  if (!grantBusy) refreshAll();
+  if (!grantBusy && !langBusy) refreshAll();
 }, 4000);

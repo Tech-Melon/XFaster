@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Tech Melon XFaster",
-  "version": "0.5.28",
-  "description": "从网页更快打开 X：外站拦截不伤 X 站内导航；热壳复用；可选谷歌识图。",
+  "name": "__MSG_extName__",
+  "version": "0.5.31",
+  "default_locale": "zh_CN",
+  "description": "__MSG_extDesc__",
   "icons": {
     "16": "assets/icons/icon16.png",
     "32": "assets/icons/icon32.png",
@@ -10,7 +11,7 @@
     "128": "assets/icons/icon128.png"
   },
   "action": {
-    "default_title": "Tech Melon XFaster",
+    "default_title": "__MSG_actionTitle__",
     "default_popup": "ui/popup.html",
     "default_icon": {
       "16": "assets/icons/icon16.png",

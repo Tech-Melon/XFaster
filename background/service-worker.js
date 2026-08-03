@@ -54,7 +54,10 @@ installImageSearchContextMenu(getSettings);
 async function refreshImageSearchMenuFromSettings() {
   try {
     const s = await getSettings();
-    await syncImageSearchContextMenu(Boolean(s.enableImageSearch));
+    await syncImageSearchContextMenu(
+      Boolean(s.enableImageSearch),
+      s.uiLang === "en" ? "en" : "zh",
+    );
   } catch {
     // ignore
   }
@@ -207,6 +210,7 @@ async function handleMessage(message, sender) {
           imageSearchTrigger: settings.imageSearchTrigger,
           imageSearchOpenMode: settings.imageSearchOpenMode,
           imageSearchEngine: settings.imageSearchEngine,
+          uiLang: settings.uiLang === "en" ? "en" : "zh",
         },
         warm,
         debug,
@@ -216,7 +220,10 @@ async function handleMessage(message, sender) {
     case MSG.SET_IMAGE_SEARCH_ENABLED: {
       const enabled = Boolean(message.enabled);
       const next = await saveSettings({ enableImageSearch: enabled });
-      await syncImageSearchContextMenu(Boolean(next.enableImageSearch));
+      await syncImageSearchContextMenu(
+        Boolean(next.enableImageSearch),
+        next.uiLang === "en" ? "en" : "zh",
+      );
       await debugLog("img", "SET_IMAGE_SEARCH_ENABLED", { enabled });
       return { ok: true, enableImageSearch: next.enableImageSearch };
     }

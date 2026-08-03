@@ -36,6 +36,7 @@
     imageSearchMinSize: 80,
     imageSearchTrigger: "badge",
     excludedHostSuffixes: [],
+    uiLang: "zh",
   };
 
   let lastX = 0;
@@ -48,6 +49,25 @@
   let listenersOn = false;
   /** @type {HTMLButtonElement|null} */
   let badgeEl = null;
+
+  function badgeCopy() {
+    const en = settings.uiLang === "en";
+    return {
+      text: en ? "🔍 Search" : "🔍 搜图",
+      title: en
+        ? "Google reverse image (system context menu still works)"
+        : "用 Google 识图（系统右键菜单仍可用）",
+      aria: en ? "Google reverse image" : "谷歌识图",
+    };
+  }
+
+  function applyBadgeLang() {
+    if (!badgeEl) return;
+    const c = badgeCopy();
+    badgeEl.textContent = c.text;
+    badgeEl.title = c.title;
+    badgeEl.setAttribute("aria-label", c.aria);
+  }
 
   function isExcluded() {
     try {
@@ -221,13 +241,17 @@
   }
 
   function ensureBadge() {
-    if (badgeEl && badgeEl.isConnected) return badgeEl;
+    if (badgeEl && badgeEl.isConnected) {
+      applyBadgeLang();
+      return badgeEl;
+    }
     const btn = document.createElement("button");
     btn.id = BADGE_ID;
     btn.type = "button";
-    btn.textContent = "🔍 搜图";
-    btn.title = "用 Google 识图（系统右键菜单仍可用）";
-    btn.setAttribute("aria-label", "谷歌识图");
+    const copy = badgeCopy();
+    btn.textContent = copy.text;
+    btn.title = copy.title;
+    btn.setAttribute("aria-label", copy.aria);
     Object.assign(btn.style, {
       position: "fixed",
       zIndex: "2147483646",
@@ -671,7 +695,9 @@
           excludedHostSuffixes: Array.isArray(s.excludedHostSuffixes)
             ? s.excludedHostSuffixes
             : [],
+          uiLang: s.uiLang === "en" ? "en" : "zh",
         };
+        applyBadgeLang();
         applyEnabledState();
       });
     } catch {

@@ -6,6 +6,7 @@ import {
   STORAGE_KEYS,
   WARMUP_PROFILES,
 } from "./constants.js";
+import { normalizeLang } from "./i18n.js";
 
 /**
  * @param {Partial<typeof DEFAULT_SETTINGS>} raw
@@ -45,6 +46,7 @@ export function normalizeSettings(raw = {}) {
   merged.autoDowngradeOnPowerSave = Boolean(merged.autoDowngradeOnPowerSave);
   merged.respectModifierClicks = Boolean(merged.respectModifierClicks);
   merged.debugLogging = Boolean(merged.debugLogging);
+  merged.uiLang = normalizeLang(merged.uiLang);
 
   // —— 谷歌识图 ——
   merged.enableImageSearch = Boolean(merged.enableImageSearch);

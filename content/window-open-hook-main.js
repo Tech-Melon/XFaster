@@ -61,6 +61,96 @@
     }
   }
 
+  /**
+   * 链接内部嵌套控件 / 编辑态。
+   * 命中后：只 preventDefault（拦 <a> 跳转），不 stopPropagation（页面编辑逻辑要跑）。
+   */
+  function isNestedInteractive(target, boundary) {
+    if (!(target instanceof Element) || !boundary) return false;
+    try {
+      if (
+        boundary.querySelector &&
+        boundary.querySelector(
+          'input, textarea, select, [contenteditable=""], [contenteditable="true"]',
+        )
+      ) {
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+
+    let el = target;
+    while (el && el !== boundary) {
+      const tag = el.tagName;
+      if (
+        tag === "BUTTON" ||
+        tag === "INPUT" ||
+        tag === "SELECT" ||
+        tag === "TEXTAREA" ||
+        tag === "LABEL" ||
+        tag === "SUMMARY"
+      ) {
+        return true;
+      }
+      const role = (el.getAttribute("role") || "").toLowerCase();
+      if (
+        role === "button" ||
+        role === "menuitem" ||
+        role === "switch" ||
+        role === "checkbox" ||
+        role === "tab" ||
+        role === "option"
+      ) {
+        return true;
+      }
+      if (el.isContentEditable) return true;
+
+      const icon = el.getAttribute("data-icon") || "";
+      if (
+        /Icon(?:Edit|Delete|Close|Remove|Trash|Pencil|Setting|Settings|Copy|Menu|More|Rename|Check|Confirm|Tick|Success|Cancel|Clear|Save|Ok|Done|Cross|Plus|Minus|Add|Fail|Error|Warning)/i.test(
+          icon,
+        )
+      ) {
+        return true;
+      }
+
+      const hint = [
+        el.getAttribute("aria-label") || "",
+        el.getAttribute("title") || "",
+        el.getAttribute("data-tooltip") || "",
+      ].join(" ");
+      if (
+        /编辑|刪除|删除|修改|重命名|关闭|取消|确认|保存|設定|设置|edit|delete|remove|close|cancel|confirm|save|rename|settings?/i.test(
+          hint,
+        )
+      ) {
+        return true;
+      }
+
+      const cls =
+        typeof el.className === "string"
+          ? el.className
+          : el.getAttribute("class") || "";
+      if (/\bcursor-pointer\b/.test(cls)) {
+        if (tag === "SVG" || tag === "PATH" || tag === "I" || tag === "IMG" || icon) {
+          return true;
+        }
+        try {
+          const r = el.getBoundingClientRect();
+          if (r && r.width > 0 && r.width <= 44 && r.height > 0 && r.height <= 44) {
+            return true;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      el = el.parentElement;
+    }
+    return false;
+  }
+
   function notifyOpenX(url) {
     try {
       window.postMessage(
@@ -122,6 +212,11 @@
       if (!a) return;
       const href = a.href || a.getAttribute("href");
       if (!href || !isXUrl(href)) return;
+      // 嵌套控件 / 编辑态：只拦默认跳转，不 stop*、不代开 X
+      if (isNestedInteractive(t, a)) {
+        ev.preventDefault();
+        return;
+      }
       ev.preventDefault();
       ev.stopPropagation();
       if (typeof ev.stopImmediatePropagation === "function") {
@@ -145,6 +240,10 @@
         if (!a) return;
         const href = a.href || a.getAttribute("href");
         if (!href || !isXUrl(href)) return;
+        if (isNestedInteractive(t, a)) {
+          ev.preventDefault();
+          return;
+        }
         ev.preventDefault();
         ev.stopPropagation();
         notifyOpenX(href);

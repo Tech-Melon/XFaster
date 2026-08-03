@@ -236,6 +236,121 @@
     return X_HOSTS.has(h) && h !== "t.co";
   }
 
+  /**
+   * 点击落在「X 链接内部的嵌套控件」上。
+   * 典型：监控列表把编辑笔 / 确认勾 / 取消叉塞进 a[href=x.com/user] 里。
+   *
+   * 注意：命中后不能「完全放行」——否则 <a> 默认导航仍会打开 X；
+   * 应 preventDefault（拦跳转）且不 stopPropagation（让页面编辑逻辑能跑）。
+   *
+   * @param {Element} target  真实点击目标
+   * @param {Element} boundary  解析出的链接/卡片根（通常是 <a>）
+   * @returns {boolean}
+   */
+  function isNestedInteractive(target, boundary) {
+    if (!(target instanceof Element) || !boundary) return false;
+    // 链接内部已有输入框/可编辑区时，整段交互优先交给页面（编辑态）
+    try {
+      if (
+        boundary.querySelector?.(
+          'input, textarea, select, [contenteditable=""], [contenteditable="true"]',
+        )
+      ) {
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+
+    let el = target;
+    while (el && el !== boundary) {
+      const tag = el.tagName;
+      if (
+        tag === "BUTTON" ||
+        tag === "INPUT" ||
+        tag === "SELECT" ||
+        tag === "TEXTAREA" ||
+        tag === "LABEL" ||
+        tag === "SUMMARY"
+      ) {
+        return true;
+      }
+      const role = (el.getAttribute?.("role") || "").toLowerCase();
+      if (
+        role === "button" ||
+        role === "menuitem" ||
+        role === "switch" ||
+        role === "checkbox" ||
+        role === "tab" ||
+        role === "option"
+      ) {
+        return true;
+      }
+      if (el.isContentEditable) return true;
+
+      // 组件库图标：编辑 / 删除 / 确认勾 / 取消叉 …
+      const icon = el.getAttribute?.("data-icon") || "";
+      if (
+        /Icon(?:Edit|Delete|Close|Remove|Trash|Pencil|Setting|Settings|Copy|Menu|More|Rename|Check|Confirm|Tick|Success|Cancel|Clear|Save|Ok|Done|Cross|Plus|Minus|Add|Fail|Error|Warning)/i.test(
+          icon,
+        )
+      ) {
+        return true;
+      }
+
+      // aria / title 提示为操作控件
+      const hint = [
+        el.getAttribute?.("aria-label") || "",
+        el.getAttribute?.("title") || "",
+        el.getAttribute?.("data-tooltip") || "",
+      ].join(" ");
+      if (
+        /编辑|刪除|删除|修改|重命名|关闭|取消|确认|保存|設定|设置|edit|delete|remove|close|cancel|confirm|save|rename|settings?/i.test(
+          hint,
+        )
+      ) {
+        return true;
+      }
+
+      // Tailwind 小图标按钮：cursor-pointer + svg / data-icon / 小尺寸
+      const cls =
+        typeof el.className === "string"
+          ? el.className
+          : el.getAttribute?.("class") || "";
+      if (/\bcursor-pointer\b/.test(cls)) {
+        if (tag === "SVG" || tag === "PATH" || tag === "I" || tag === "IMG" || icon) {
+          return true;
+        }
+        try {
+          const r = el.getBoundingClientRect?.();
+          if (r && r.width > 0 && r.width <= 44 && r.height > 0 && r.height <= 44) {
+            return true;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      el = el.parentElement;
+    }
+    return false;
+  }
+
+  /**
+   * 嵌套控件：只取消链接默认跳转，不打断事件流、不代开 X。
+   * @param {Event} ev
+   * @param {Element} linkEl
+   */
+  function suppressLinkNavOnly(ev, linkEl) {
+    try {
+      if (linkEl && linkEl.tagName === "A") {
+        ev.preventDefault();
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   function injectPreconnect() {
     if (preconnected || !settings.enableL1Preconnect) return;
     preconnected = true;
@@ -398,6 +513,12 @@
     if (modified && settings.respectModifierClicks) return false;
     if (hit.el.tagName === "A" && hit.el.hasAttribute("download")) return false;
 
+    // 链接内嵌套控件 / 编辑态：拦默认跳转，但不 stop*、不 OPEN_X
+    if (isNestedInteractive(ev.target, hit.el)) {
+      suppressLinkNavOnly(ev, hit.el);
+      return false;
+    }
+
     // 尽早打断默认导航 / 站内 open
     ev.preventDefault();
     ev.stopPropagation();
@@ -439,6 +560,12 @@
     const modified = ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey;
     if (modified && settings.respectModifierClicks) return;
 
+    // 嵌套控件 / 编辑态：不预热、不代开 X；仅取消 <a> 默认导航
+    if (isNestedInteractive(ev.target, hit.el)) {
+      suppressLinkNavOnly(ev, hit.el);
+      return;
+    }
+
     // 能解析出 X URL：pointerdown 直接接管，避免浏览器先开冷标签
     if (isExtensionAlive() && hit.url) {
       tryInterceptOpen(ev, true);
@@ -463,6 +590,12 @@
 
     // pointerdown 已处理则跳过，防双开
     const hit = resolveXTarget(ev.target, 10);
+    // 嵌套控件 / 编辑态：拦跳转、不 stop*，页面可收到确认勾/取消叉
+    if (hit && isNestedInteractive(ev.target, hit.el)) {
+      suppressLinkNavOnly(ev, hit.el);
+      return;
+    }
+
     if (hit?.el?.getAttribute) {
       const ts = Number(hit.el.getAttribute("data-xfaster-handled") || 0);
       if (ts && Date.now() - ts < 1500) {

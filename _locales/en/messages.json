@@ -1,0 +1,14 @@
+{
+  "extName": {
+    "message": "Tech Melon XFaster",
+    "description": "Extension name"
+  },
+  "extDesc": {
+    "message": "Open X faster from any page: intercept off-site without breaking on-X navigation; warm shell reuse; optional Google reverse image.",
+    "description": "Extension description"
+  },
+  "actionTitle": {
+    "message": "Tech Melon XFaster",
+    "description": "Browser action tooltip"
+  }
+}

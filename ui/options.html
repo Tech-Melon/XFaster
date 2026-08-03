@@ -9,8 +9,19 @@
   <body>
     <main class="wrap">
       <header class="hero">
-        <h1>Tech Melon XFaster 设置</h1>
-        <p>
+        <div class="hero-top">
+          <h1 data-i18n="opt.title">Tech Melon XFaster 设置</h1>
+          <button
+            type="button"
+            id="btnLangToggle"
+            class="lang-toggle"
+            title="Switch to English / 切换到英文"
+            aria-label="Switch language"
+          >
+            EN
+          </button>
+        </div>
+        <p data-i18n="opt.hero">
           默认（均衡折中）：页面有推特链接时自动暖 1 个壳 · TTL 20 分钟（最长 1
           小时）· 不悬停狂预热 · 省电/极速可在下方切换
         </p>
@@ -18,25 +29,29 @@
 
       <form id="form">
         <section class="panel">
-          <h2>打开方式</h2>
+          <h2 data-i18n="opt.sec.open">打开方式</h2>
           <label class="field">
-            <span>默认打开位置</span>
+            <span data-i18n="opt.openMode">默认打开位置</span>
             <select name="openMode" id="openMode">
-              <option value="new_tab">新标签（推荐）</option>
-              <option value="current_tab">当前标签</option>
+              <option value="new_tab" data-i18n="opt.openMode.new_tab">
+                新标签（推荐）
+              </option>
+              <option value="current_tab" data-i18n="opt.openMode.current_tab">
+                当前标签
+              </option>
             </select>
           </label>
           <label class="check">
             <input type="checkbox" name="preferReuseXTab" id="preferReuseXTab" />
-            <span>优先复用已打开 / 预热的 X 标签</span>
+            <span data-i18n="opt.preferReuse">优先复用已打开 / 预热的 X 标签</span>
           </label>
           <label class="check">
             <input type="checkbox" name="singleXTabMode" id="singleXTabMode" />
-            <span>单 X 标签模式（所有链接尽量进同一个标签）</span>
+            <span data-i18n="opt.singleTab">单 X 标签模式（所有链接尽量进同一个标签）</span>
           </label>
           <label class="check">
             <input type="checkbox" name="normalizeToXCom" id="normalizeToXCom" />
-            <span>将 twitter.com 规范化为 x.com</span>
+            <span data-i18n="opt.normalize">将 twitter.com 规范化为 x.com</span>
           </label>
           <label class="check">
             <input
@@ -44,24 +59,32 @@
               name="respectModifierClicks"
               id="respectModifierClicks"
             />
-            <span>尊重 Ctrl/⌘/Shift 点击的浏览器默认行为</span>
+            <span data-i18n="opt.respectMod">尊重 Ctrl/⌘/Shift 点击的浏览器默认行为</span>
           </label>
         </section>
 
         <section class="panel">
-          <h2>预热与性能</h2>
+          <h2 data-i18n="opt.sec.perf">预热与性能</h2>
           <label class="field">
-            <span>预热档位</span>
+            <span data-i18n="opt.warmupProfile">预热档位</span>
             <select name="warmupProfile" id="warmupProfile">
-              <option value="eco">节能 — 几乎无后台开销</option>
-              <option value="balanced">均衡 — 有链接暖壳（默认）</option>
-              <option value="fast">快速 — 暖壳 + 悬停检测 · TTL 30m</option>
-              <option value="turbo">极速 — 暖壳 + 悬停预热 · TTL 45m</option>
+              <option value="eco" data-i18n="opt.profile.eco">
+                节能 — 几乎无后台开销
+              </option>
+              <option value="balanced" data-i18n="opt.profile.balanced">
+                均衡 — 有链接暖壳（默认）
+              </option>
+              <option value="fast" data-i18n="opt.profile.fast">
+                快速 — 暖壳 + 悬停检测 · TTL 30m
+              </option>
+              <option value="turbo" data-i18n="opt.profile.turbo">
+                极速 — 暖壳 + 悬停预热 · TTL 45m
+              </option>
             </select>
           </label>
           <p class="hint" id="profileHint"></p>
           <label class="field">
-            <span>热实例最长存活 N 分钟</span>
+            <span data-i18n="opt.ttl">热实例最长存活 N 分钟</span>
             <select name="turboTtlMinutes" id="turboTtlMinutes">
               <option value="1">1 分钟</option>
               <option value="3">3 分钟</option>
@@ -74,7 +97,7 @@
             </select>
           </label>
           <label class="field">
-            <span>预热入口 URL</span>
+            <span data-i18n="opt.warmUrl">预热入口 URL</span>
             <input
               type="url"
               name="warmEntryUrl"
@@ -88,15 +111,15 @@
               name="allowBackgroundWarmTab"
               id="allowBackgroundWarmTab"
             />
-            <span>允许后台热标签（L3，全局最多 1 个）</span>
+            <span data-i18n="opt.allowL3">允许后台热标签（L3，全局最多 1 个）</span>
           </label>
           <label class="check">
             <input type="checkbox" name="autoWarmOnLinks" id="autoWarmOnLinks" />
-            <span>页面出现推特链接时自动后台预热</span>
+            <span data-i18n="opt.autoLinks">页面出现推特链接时自动后台预热</span>
           </label>
           <label class="check">
             <input type="checkbox" name="autoWarmOnHover" id="autoWarmOnHover" />
-            <span>悬停推特链接时后台预加载该链接</span>
+            <span data-i18n="opt.autoHover">悬停推特链接时后台预加载该链接</span>
           </label>
           <label class="check">
             <input
@@ -104,14 +127,14 @@
               name="enableL1Preconnect"
               id="enableL1Preconnect"
             />
-            <span>页面存在推特链接时 Preconnect（L1）</span>
+            <span data-i18n="opt.l1">页面存在推特链接时 Preconnect（L1）</span>
           </label>
           <label class="check">
             <input type="checkbox" name="enableL2Hover" id="enableL2Hover" />
-            <span>启用悬停意图检测（L2）</span>
+            <span data-i18n="opt.l2">启用悬停意图检测（L2）</span>
           </label>
           <label class="field">
-            <span>悬停触发阈值（毫秒）</span>
+            <span data-i18n="opt.hoverMs">悬停触发阈值（毫秒）</span>
             <input
               type="number"
               name="hoverThresholdMs"
@@ -127,17 +150,17 @@
               name="autoDowngradeOnPowerSave"
               id="autoDowngradeOnPowerSave"
             />
-            <span>省电/省流时自动降级（预留开关）</span>
+            <span data-i18n="opt.powerSave">省电/省流时自动降级（预留开关）</span>
           </label>
           <label class="check">
             <input type="checkbox" name="debugLogging" id="debugLogging" />
-            <span>启用调试日志（会写 storage，日常请关闭）</span>
+            <span data-i18n="opt.debug">启用调试日志（会写 storage，日常请关闭）</span>
           </label>
         </section>
 
         <section class="panel">
-          <h2>谷歌识图</h2>
-          <p class="hint">
+          <h2 data-i18n="opt.sec.img">谷歌识图</h2>
+          <p class="hint" data-i18n="opt.img.intro">
             与打开 X 加速相互独立。弹窗可一键开关；此处为详细参数。需已授权站点权限（全站或当前站）才会注入页面脚本。
           </p>
           <label class="check">
@@ -146,10 +169,10 @@
               name="enableImageSearch"
               id="enableImageSearch"
             />
-            <span>启用谷歌识图（总开关，与弹窗同步）</span>
+            <span data-i18n="opt.img.enable">启用谷歌识图（总开关，与弹窗同步）</span>
           </label>
           <label class="field">
-            <span>鼠标静止多久后瞄准图片（毫秒）</span>
+            <span data-i18n="opt.img.dwell">鼠标静止多久后瞄准图片（毫秒）</span>
             <input
               type="number"
               name="imageSearchDwellMs"
@@ -160,7 +183,7 @@
             />
           </label>
           <label class="field">
-            <span>最小图片边长（像素，忽略小图标）</span>
+            <span data-i18n="opt.img.minSize">最小图片边长（像素，忽略小图标）</span>
             <input
               type="number"
               name="imageSearchMinSize"
@@ -171,52 +194,69 @@
             />
           </label>
           <label class="field">
-            <span>触发方式</span>
+            <span data-i18n="opt.img.trigger">触发方式</span>
             <select name="imageSearchTrigger" id="imageSearchTrigger">
-              <option value="badge">
+              <option value="badge" data-i18n="opt.img.trigger.badge">
                 浮动「搜图」按钮（默认，不拦截系统右键）
               </option>
-              <option value="alt_right">Alt + 右键搜图（普通右键保留菜单）</option>
-              <option value="right">拦截右键搜图（会挡住另存为等）</option>
-              <option value="left">拦截左键搜图</option>
-              <option value="both">拦截左键 + 右键</option>
+              <option value="alt_right" data-i18n="opt.img.trigger.alt_right">
+                Alt + 右键搜图（普通右键保留菜单）
+              </option>
+              <option value="right" data-i18n="opt.img.trigger.right">
+                拦截右键搜图（会挡住另存为等）
+              </option>
+              <option value="left" data-i18n="opt.img.trigger.left">拦截左键搜图</option>
+              <option value="both" data-i18n="opt.img.trigger.both">拦截左键 + 右键</option>
             </select>
           </label>
-          <p class="hint">
+          <p class="hint" data-i18n="opt.img.menuHint">
             开启识图后，系统右键菜单会额外多一项「谷歌识图（XFaster）」，与上面触发方式并存；保存图片等原生项不受影响。
           </p>
           <label class="field">
-            <span>结果打开方式</span>
+            <span data-i18n="opt.img.openMode">结果打开方式</span>
             <select name="imageSearchOpenMode" id="imageSearchOpenMode">
-              <option value="popup">独立小弹窗（单例复用，推荐）</option>
-              <option value="tab">浏览器新标签</option>
+              <option value="popup" data-i18n="opt.img.open.popup">
+                独立小弹窗（单例复用，推荐）
+              </option>
+              <option value="tab" data-i18n="opt.img.open.tab">浏览器新标签</option>
             </select>
           </label>
           <label class="field">
-            <span>识图引擎</span>
+            <span data-i18n="opt.img.engine">识图引擎</span>
             <select name="imageSearchEngine" id="imageSearchEngine">
-              <option value="lens">Google Lens（uploadbyurl）</option>
-              <option value="google_images">Google 以图搜图（经典）</option>
+              <option value="lens" data-i18n="opt.img.engine.lens">
+                Google Lens（uploadbyurl）
+              </option>
+              <option value="google_images" data-i18n="opt.img.engine.images">
+                Google 以图搜图（经典）
+              </option>
             </select>
           </label>
         </section>
 
         <section class="panel">
-          <h2>排除站点</h2>
+          <h2 data-i18n="opt.sec.exclude">排除站点</h2>
           <label class="field">
-            <span>排除域名后缀（逗号分隔，如 example.com, intranet.local）</span>
+            <span data-i18n="opt.exclude">
+              排除域名后缀（逗号分隔，如 example.com, intranet.local）
+            </span>
             <textarea
               id="excludedHostSuffixes"
               rows="3"
+              data-i18n-placeholder="opt.exclude.ph"
               placeholder="留空表示所有网站生效"
             ></textarea>
           </label>
-          <p class="hint">排除后：该站不拦截 X 链接，也不启用识图瞄准。</p>
+          <p class="hint" data-i18n="opt.exclude.hint">
+            排除后：该站不拦截 X 链接，也不启用识图瞄准。
+          </p>
         </section>
 
         <div class="footer-actions">
-          <button type="submit" class="btn primary">保存</button>
-          <button type="button" id="btnReset" class="btn">恢复默认</button>
+          <button type="submit" class="btn primary" data-i18n="opt.save">保存</button>
+          <button type="button" id="btnReset" class="btn" data-i18n="opt.reset">
+            恢复默认
+          </button>
           <span id="saveMsg" class="save-msg" hidden>已保存</span>
         </div>
       </form>

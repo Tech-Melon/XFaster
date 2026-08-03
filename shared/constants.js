@@ -116,6 +116,9 @@ export const DEFAULT_SETTINGS = {
 
   debugLogging: false,
 
+  /** UI 语言：zh | en（弹窗右上角切换） */
+  uiLang: "zh",
+
   excludedHostSuffixes: [],
 
   /**

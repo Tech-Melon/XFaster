@@ -38,6 +38,13 @@ body {
   padding: 28px 18px 48px;
 }
 
+.hero-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .hero h1 {
   margin: 0 0 6px;
   font-size: 24px;
@@ -47,6 +54,31 @@ body {
   margin: 0 0 20px;
   color: var(--muted);
   font-size: 14px;
+}
+
+.lang-toggle {
+  appearance: none;
+  flex-shrink: 0;
+  min-width: 40px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.lang-toggle:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.lang-toggle:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .panel {

@@ -1,0 +1,14 @@
+{
+  "extName": {
+    "message": "Tech Melon XFaster",
+    "description": "Extension name"
+  },
+  "extDesc": {
+    "message": "从网页更快打开 X：外站拦截不伤 X 站内导航；热壳复用；可选谷歌识图。",
+    "description": "Extension description"
+  },
+  "actionTitle": {
+    "message": "Tech Melon XFaster",
+    "description": "Browser action tooltip"
+  }
+}

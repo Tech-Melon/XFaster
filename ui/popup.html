@@ -11,16 +11,25 @@
       <div class="brand">
         <span class="logo">X</span>
         <div>
-          <h1>Tech Melon XFaster</h1>
-          <p class="sub" id="subTitle">均衡折中 · Tech Melon</p>
+          <h1 data-i18n="app.name">Tech Melon XFaster</h1>
+          <p class="sub" id="subTitle">均衡 · Tech Melon</p>
         </div>
       </div>
+      <button
+        type="button"
+        id="btnLangToggle"
+        class="lang-toggle"
+        title="Switch to English / 切换到英文"
+        aria-label="Switch language"
+      >
+        EN
+      </button>
     </header>
 
     <!-- 站点授权：置顶，未授权时醒目 -->
     <section class="perm-card" id="permBlock">
       <div class="perm-head">
-        <span class="perm-title">站点授权</span>
+        <span class="perm-title" data-i18n="perm.title">站点授权</span>
         <span class="perm-badge" id="permBadge">未授权全站</span>
       </div>
       <p class="perm-text" id="permText">
@@ -38,8 +47,8 @@
     </section>
 
     <section class="profile-block">
-      <div class="profile-title">一键配置</div>
-      <div class="profile-grid" role="group" aria-label="预热档位">
+      <div class="profile-title" data-i18n="popup.profileTitle">一键配置</div>
+      <div class="profile-grid" role="group" aria-label="预热档位" id="profileGrid">
         <button type="button" class="profile-btn" data-profile="eco" id="pf-eco">
           节能
         </button>
@@ -70,7 +79,7 @@
     <section class="feature-card" id="imageSearchBlock">
       <div class="feature-row">
         <div class="feature-copy">
-          <div class="feature-title">谷歌识图</div>
+          <div class="feature-title" data-i18n="img.title">谷歌识图</div>
           <p class="feature-desc" id="imageSearchDesc">
             鼠标在图上静止后，右键打开 Lens 小窗
           </p>
@@ -81,6 +90,8 @@
           class="toggle"
           role="switch"
           aria-checked="false"
+          data-i18n-aria="img.toggleAria"
+          data-i18n-title="img.toggleAria"
           aria-label="开关谷歌识图"
           title="开关谷歌识图"
         >
@@ -88,8 +99,8 @@
         </button>
       </div>
       <p class="feature-hint">
-        需全站/当前站授权；详细配置见
-        <button type="button" id="btnImageSearchOptions" class="text-link">
+        <span data-i18n="img.hint">需全站/当前站授权；详细配置见</span>
+        <button type="button" id="btnImageSearchOptions" class="text-link" data-i18n="img.hint.link">
           设置页
         </button>
       </p>
@@ -97,23 +108,23 @@
 
     <section class="card">
       <div class="row">
-        <span class="label">当前档位</span>
+        <span class="label" data-i18n="status.profile">当前档位</span>
         <span id="profileBadge" class="badge">均衡</span>
       </div>
       <div class="row">
-        <span class="label">打开方式</span>
+        <span class="label" data-i18n="status.openMode">打开方式</span>
         <span id="openModeText" class="value">新标签</span>
       </div>
       <div class="row">
-        <span class="label">热实例</span>
+        <span class="label" data-i18n="status.warm">热实例</span>
         <span id="warmStatus" class="value">无</span>
       </div>
       <div class="row" id="urlRow">
-        <span class="label">上次打开</span>
+        <span class="label" data-i18n="status.lastOpen">上次打开</span>
         <span id="urlText" class="value mono">—</span>
       </div>
       <div class="row" id="ttlRow" hidden>
-        <span class="label">剩余 TTL</span>
+        <span class="label" data-i18n="status.ttl">剩余 TTL</span>
         <span id="ttlText" class="value">—</span>
       </div>
     </section>
@@ -121,18 +132,28 @@
     <p id="hint" class="hint">授权按钮可直接点击。正在读取状态…</p>
 
     <section class="actions">
-      <button type="button" id="btnOpen" class="btn primary">打开 X</button>
+      <button type="button" id="btnOpen" class="btn primary" data-i18n="action.openX">
+        打开 X
+      </button>
       <div class="btn-row">
-        <button type="button" id="btnWarm" class="btn">立即预热</button>
-        <button type="button" id="btnRelease" class="btn ghost">释放预热</button>
+        <button type="button" id="btnWarm" class="btn" data-i18n="action.warm">
+          立即预热
+        </button>
+        <button type="button" id="btnRelease" class="btn ghost" data-i18n="action.release">
+          释放预热
+        </button>
       </div>
-      <button type="button" id="btnOptions" class="btn link">打开设置…</button>
+      <button type="button" id="btnOptions" class="btn link" data-i18n="action.options">
+        打开设置…
+      </button>
     </section>
 
     <section class="debug-panel" hidden>
       <div class="debug-head">
-        <span>调试日志</span>
-        <button type="button" id="btnClearDebug" class="btn-mini">清空</button>
+        <span data-i18n="debug.title">调试日志</span>
+        <button type="button" id="btnClearDebug" class="btn-mini" data-i18n="debug.clear">
+          清空
+        </button>
       </div>
       <pre id="debugLog" class="debug-log">—</pre>
     </section>

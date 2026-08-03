@@ -36,12 +36,46 @@ body {
 
 .header {
   margin-bottom: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .brand {
   display: flex;
   gap: 10px;
   align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.lang-toggle {
+  appearance: none;
+  flex-shrink: 0;
+  margin-top: 2px;
+  min-width: 36px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.lang-toggle:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+}
+
+.lang-toggle:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .logo {

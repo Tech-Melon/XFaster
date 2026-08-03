@@ -339,7 +339,7 @@ const CONTEXT_MENU_ID = "xfaster-image-search";
  * 系统右键菜单增加「谷歌识图」，不拦截「图片另存为」等原生项
  * @param {boolean} enabled
  */
-export async function syncImageSearchContextMenu(enabled) {
+export async function syncImageSearchContextMenu(enabled, uiLang = "zh") {
   if (!chrome.contextMenus) return;
   try {
     await chrome.contextMenus.remove(CONTEXT_MENU_ID);
@@ -347,10 +347,14 @@ export async function syncImageSearchContextMenu(enabled) {
     // 尚不存在
   }
   if (!enabled) return;
+  const title =
+    uiLang === "en"
+      ? "Google reverse image (XFaster)"
+      : "谷歌识图（XFaster）";
   try {
     await chrome.contextMenus.create({
       id: CONTEXT_MENU_ID,
-      title: "谷歌识图（XFaster）",
+      title,
       contexts: ["image"],
     });
   } catch {
