@@ -170,6 +170,8 @@ const DICT = {
   "last.fullFallback": { zh: "整页回退", en: "Full reload fallback" },
   "last.cold": { zh: "冷开新标签", en: "Cold new tab" },
   "last.force": { zh: "强制刷新", en: "Force reload" },
+  "last.staleHard": { zh: "闲置整页刷新", en: "Idle full reload" },
+  "last.spaRevert": { zh: "SPA 回退纠正", en: "SPA revert corrected" },
 
   // —— 提示 / 操作 ——
   "hint.loading": {

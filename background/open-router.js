@@ -9,19 +9,18 @@
 import {
   normalizeXUrl,
   isXTabUrl,
-  urlsLooselyEqual,
   routeKey,
 } from "../shared/url-utils.js";
 import {
   activateWarmOrNull,
   findAnyXTab,
+  navigateReusableTab,
   touchWarmFromOpen,
   patchWarmState,
-  getTabSafe,
   scheduleExpireFromSettings,
   withXTabCreateLock,
 } from "./warm-manager.js";
-import { hasReusableXShell, softNavigateXTab } from "./spa-nav.js";
+import { hasReusableXShell } from "./spa-nav.js";
 import { enqueueOpen } from "./open-queue.js";
 import { debugLog } from "../shared/debug.js";
 import { markOwnedTab } from "./owned-tabs.js";
@@ -69,91 +68,20 @@ async function navigateExistingXTab(target, settings) {
   }
 
   markOwnedTab(any.id);
-  await chrome.tabs.update(any.id, { active: true });
-  await focus(any.windowId);
-
-  if (any.url && urlsLooselyEqual(any.url, target)) {
-    const lastOpen = {
-      at: Date.now(),
-      mode: "reuse_existing_same",
-      instant: true,
-      spa: false,
-      target,
-    };
-    await touchWarmFromOpen(any.id, settings, target, {
-      loadStatus: "complete",
-      shellReady: true,
-      loadedUrl: target,
-      lastOpen,
-    });
-    return {
-      ok: true,
-      mode: "reuse_existing_same",
-      tabId: any.id,
-      url: target,
-      fast: true,
-      instant: true,
-      spa: false,
-      lastOpen,
-    };
-  }
-
-  const soft = await softNavigateXTab(any.id, target);
-  if (soft.ok && !soft.hardNav) {
-    const after = await getTabSafe(any.id);
-    if (after?.url && urlsLooselyEqual(after.url, target)) {
-      const lastOpen = {
-        at: Date.now(),
-        mode: "spa_soft_existing",
-        spa: true,
-        spaMethod: soft.method,
-        instant: true,
-        target,
-      };
-      await touchWarmFromOpen(any.id, settings, target, {
-        loadStatus: "complete",
-        shellReady: true,
-        pendingUrl: target,
-        loadedUrl: target,
-        lastOpen,
-      });
-      return {
-        ok: true,
-        mode: "spa_soft_existing",
-        tabId: any.id,
-        url: target,
-        fast: true,
-        spa: true,
-        spaMethod: soft.method,
-        lastOpen,
-      };
-    }
-  }
-
-  await chrome.tabs.update(any.id, { url: target, active: true });
-  await focus(any.windowId);
-  const lastOpen = {
-    at: Date.now(),
-    mode: "full_reload_fallback",
-    spaFailReason: soft?.reason || "nav_existing",
-    navigated: true,
-    target,
-  };
-  await touchWarmFromOpen(any.id, settings, target, {
-    loadStatus: "loading",
-    pendingUrl: target,
-    shellReady: false,
-    lastOpen,
-  });
+  const nav = await navigateReusableTab(any, target, settings);
+  if (!nav?.tabId) return null;
   return {
     ok: true,
-    mode: "full_reload_fallback",
-    tabId: any.id,
+    mode: nav.mode,
+    tabId: nav.tabId,
     url: target,
-    fast: false,
-    navigated: true,
-    spaFailReason: soft?.reason,
-    lastOpen,
+    fast: Boolean(nav.instant || nav.spa),
+    instant: nav.instant,
+    spa: Boolean(nav.spa),
+    navigated: nav.navigated,
+    spaMethod: nav.spaMethod,
+    spaFailReason: nav.spaFailReason,
+    lastOpen: nav.lastOpen,
   };
 }
 
@@ -266,14 +194,4 @@ export async function openXHome(settings, openerTabId) {
 
 export function tabIsX(url) {
   return isXTabUrl(url);
-}
-
-/** @param {number|undefined} windowId */
-async function focus(windowId) {
-  if (windowId == null) return;
-  try {
-    await chrome.windows.update(windowId, { focused: true });
-  } catch {
-    // ignore
-  }
 }

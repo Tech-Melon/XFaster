@@ -38,11 +38,10 @@ export async function softNavigateXTab(tabId, targetUrl) {
       await debugLog("spa", "fail discarded");
       return { ok: false, reason: "discarded" };
     }
-    if (urlsLooselyEqual(tab.url, targetUrl)) {
-      await debugLog("spa", "already_there (before nav)");
-      return { ok: true, method: "already_there", sameDocument: true };
+    if (tab.frozen) {
+      await debugLog("spa", "fail frozen");
+      return { ok: false, reason: "frozen" };
     }
-
     try {
       const u = new URL(targetUrl);
       if (u.hostname === "t.co") {
@@ -263,7 +262,7 @@ async function waitTabComplete(tabId, timeoutMs) {
  * @param {chrome.tabs.Tab|null} tab
  */
 export function hasReusableXShell(tab) {
-  if (!tab || tab.discarded) return false;
+  if (!tab) return false;
   if (!tab.url || !isXTabUrl(tab.url)) return false;
   if (tab.url.startsWith("chrome://") || tab.url.startsWith("about:")) {
     return false;

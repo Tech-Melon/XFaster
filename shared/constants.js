@@ -142,3 +142,18 @@ export const DEFAULT_SETTINGS = {
 };
 
 export const TTL_OPTIONS = [1, 3, 5, 10, 20, 30, 45, 60];
+
+/**
+ * SPA 可信窗口。超出则同标签整页打开目标（不关标签）。
+ * 闲置后 X 路由常把 pushState 回退到上一帖，扩展却误报真 SPA。
+ */
+export const SPA_TRUST = {
+  /** 标签未前台 / 未通过扩展打开超过此时长 → 不信任 SPA */
+  idleMs: 2 * 60 * 1000,
+  /** 同文档连续 SPA 次数上限 */
+  maxHops: 20,
+  /** 距上次整页加载超过此时长 → 强制整页 */
+  maxAgeMs: 15 * 60 * 1000,
+  /** SPA 报成功后再核对 URL，防止路由回退 */
+  verifyMs: 350,
+};

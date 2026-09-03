@@ -126,6 +126,10 @@ function describeLastOpen(last) {
   if (mode === "force_reload_same_url" || mode === "stale_same_url_reload") {
     return tr("last.force");
   }
+  if (mode === "stale_shell_hard_nav" || mode === "wake_discarded_reload") {
+    return tr("last.staleHard");
+  }
+  if (mode === "spa_reverted_hard_nav") return tr("last.spaRevert");
   return mode;
 }
 

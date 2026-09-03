@@ -47,6 +47,48 @@
 
   const currentKey = () => pathKey(location.href);
 
+  const statusIdFromKey = (key) => {
+    const m = /^status:(\d+)$/.exec(String(key || ""));
+    return m ? m[1] : null;
+  };
+
+  /** 页内是否已经画出目标推文（不能拿上一帖的 article 充数） */
+  function domHasStatus(statusId) {
+    if (!statusId) return false;
+    const want = `status:${statusId}`;
+    try {
+      const articles = document.querySelectorAll('article[data-testid="tweet"]');
+      for (const article of articles) {
+        const links = article.querySelectorAll("a[href]");
+        for (const a of links) {
+          try {
+            if (pathKey(a.href) === want) return true;
+          } catch {
+            // ignore
+          }
+        }
+      }
+      for (const t of document.querySelectorAll("a[href] time")) {
+        const a = t.closest("a[href]");
+        try {
+          if (a && pathKey(a.href) === want) return true;
+        } catch {
+          // ignore
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  }
+
+  function pageMatchesTarget(wantKey) {
+    if (currentKey() !== wantKey) return false;
+    const sid = statusIdFromKey(wantKey);
+    if (sid) return domHasStatus(sid);
+    return hasAppContent();
+  }
+
   function hasAppContent() {
     try {
       if (document.querySelector('[data-testid="primaryColumn"]')) return true;
@@ -115,6 +157,17 @@
       const curKey = currentKey();
 
       if (wantKey === curKey) {
+        const sid = statusIdFromKey(wantKey);
+        if (sid && !domHasStatus(sid)) {
+          log("same url but target tweet missing");
+          return {
+            ok: false,
+            reason: "spa_stale_same_url",
+            path: curKey,
+            sameDocument: true,
+            logs,
+          };
+        }
         return {
           ok: true,
           method: "already_there",
@@ -167,7 +220,7 @@
               logs,
             };
           }
-          if (currentKey() === wantKey) {
+          if (pageMatchesTarget(wantKey)) {
             log("success existing_link_spa");
             return {
               ok: true,
@@ -210,9 +263,10 @@
           };
         }
 
-        // 等内容变化（SPA 重绘）
-        let contentChanged = false;
-        const end = Date.now() + 600;
+        // 等内容变化（必须是目标推文，不能拿上一帖 article 充数）
+        const sid = statusIdFromKey(wantKey);
+        let matched = false;
+        const end = Date.now() + 1200;
         while (Date.now() < end) {
           await sleep(80);
           if (window.__xfasterDocId !== docIdBefore) {
@@ -223,29 +277,47 @@
               logs,
             };
           }
-          const contentAfter = document
-            .getElementById("react-root")
-            ?.innerText?.slice(0, 240);
-          if (
-            contentBefore &&
-            contentAfter &&
-            contentBefore !== contentAfter &&
-            currentKey() === wantKey
-          ) {
-            contentChanged = true;
+          if (pageMatchesTarget(wantKey)) {
+            matched = true;
             break;
           }
-          // 有时 path 变了且出现 tweet 节点
-          if (
-            currentKey() === wantKey &&
-            document.querySelector('article[data-testid="tweet"]')
-          ) {
-            contentChanged = true;
-            break;
+          if (!sid && currentKey() === wantKey) {
+            const contentAfter = document
+              .getElementById("react-root")
+              ?.innerText?.slice(0, 240);
+            if (
+              contentBefore &&
+              contentAfter &&
+              contentBefore !== contentAfter
+            ) {
+              matched = true;
+              break;
+            }
           }
         }
 
-        if (contentChanged) {
+        if (matched) {
+          await sleep(200);
+          if (currentKey() !== wantKey) {
+            log("url reverted after spa");
+            return {
+              ok: false,
+              reason: "spa_url_reverted",
+              path: currentKey(),
+              want: wantKey,
+              logs,
+            };
+          }
+          if (sid && !domHasStatus(sid)) {
+            log("status node disappeared after spa");
+            return {
+              ok: false,
+              reason: "spa_wrong_status",
+              path: currentKey(),
+              want: wantKey,
+              logs,
+            };
+          }
           log("success history_pushstate_rerender");
           return {
             ok: true,
@@ -257,10 +329,10 @@
         }
 
         if (currentKey() === wantKey) {
-          log("url only, no rerender");
+          log("url only, no target tweet");
           return {
             ok: false,
-            reason: "spa_url_only_no_rerender",
+            reason: sid ? "spa_wrong_status" : "spa_url_only_no_rerender",
             path: currentKey(),
             want: wantKey,
             logs,

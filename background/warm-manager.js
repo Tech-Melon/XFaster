@@ -2,16 +2,16 @@
  * L3 热壳 + 打开路径
  *
  * 打开优先级：
- * 1) 同 URL → 只激活
- * 2) SPA 软跳（校验 URL 真变了）
- * 3) 同标签整页导航（复用进程/HTTP 缓存，仍慢于 SPA 但好于新标签）
+ * 1) 同 URL → 只激活（页内内容也对得上）
+ * 2) 壳可信时 SPA 软跳（校验 URL + 目标推文节点）
+ * 3) 壳不可信 / SPA 失败 / 回退到旧帖 → 同标签整页打开目标（不关标签）
  */
-import { ALARM_NAMES, STORAGE_KEYS } from "../shared/constants.js";
+import { ALARM_NAMES, SPA_TRUST, STORAGE_KEYS } from "../shared/constants.js";
 import {
   isXTabUrl,
-  normalizeXUrl,
   urlsLooselyEqual,
 } from "../shared/url-utils.js";
+import { debugLog } from "../shared/debug.js";
 import { hasReusableXShell, softNavigateXTab } from "./spa-nav.js";
 
 /**
@@ -24,6 +24,10 @@ import { hasReusableXShell, softNavigateXTab } from "./spa-nav.js";
  * @property {"idle"|"loading"|"complete"} loadStatus
  * @property {boolean} shellReady
  * @property {object|null} lastOpen  上次打开诊断
+ * @property {number} spaHops  距上次整页加载后的连续 SPA 次数
+ * @property {number|null} lastNavAt  上次经扩展打开的时间
+ * @property {number|null} lastFullLoadAt  上次整页加载时间
+ * @property {boolean} shellUntrusted  TTL 到期或健康检查失败，下次整页
  */
 
 /** @returns {Promise<WarmState>} */
@@ -39,6 +43,10 @@ export async function getWarmState() {
     loadStatus: s.loadStatus || "idle",
     shellReady: Boolean(s.shellReady),
     lastOpen: s.lastOpen || null,
+    spaHops: Number.isFinite(s.spaHops) ? Number(s.spaHops) : 0,
+    lastNavAt: typeof s.lastNavAt === "number" ? s.lastNavAt : null,
+    lastFullLoadAt: typeof s.lastFullLoadAt === "number" ? s.lastFullLoadAt : null,
+    shellUntrusted: Boolean(s.shellUntrusted),
   };
 }
 
@@ -65,6 +73,10 @@ export async function clearWarmState() {
     loadStatus: "idle",
     shellReady: false,
     lastOpen: prev.lastOpen || null,
+    spaHops: 0,
+    lastNavAt: null,
+    lastFullLoadAt: null,
+    shellUntrusted: false,
   });
 }
 
@@ -76,6 +88,92 @@ export async function getTabSafe(tabId) {
   } catch {
     return null;
   }
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * 壳是否还适合 SPA。必须在 tabs.update(active) 之前调用，否则 lastAccessed 会被刷新。
+ * @param {chrome.tabs.Tab} tab
+ * @param {WarmState} state
+ * @returns {string|null} 不可信原因；null 表示可 SPA
+ */
+function spaTrustFailReason(tab, state) {
+  if (!tab) return "no_tab";
+  if (tab.discarded) return "discarded";
+  if (tab.frozen) return "frozen";
+  if (tab.status === "unloaded") return "unloaded";
+  if (state.shellUntrusted) return "shell_untrusted";
+
+  const now = Date.now();
+  const lastAccessed =
+    typeof tab.lastAccessed === "number" ? tab.lastAccessed : 0;
+  const lastNav = state.lastNavAt || state.lastFullLoadAt || 0;
+  const idleRef = Math.max(lastAccessed, lastNav);
+  if (idleRef && now - idleRef > SPA_TRUST.idleMs) return "idle";
+
+  if ((Number(state.spaHops) || 0) >= SPA_TRUST.maxHops) return "max_hops";
+
+  if (
+    state.lastFullLoadAt &&
+    now - state.lastFullLoadAt > SPA_TRUST.maxAgeMs
+  ) {
+    return "shell_age";
+  }
+
+  return null;
+}
+
+/**
+ * 同标签整页打开目标。不关标签，只换 document。
+ * @param {chrome.tabs.Tab} tab
+ * @param {string} target
+ * @param {object} settings
+ * @param {string} mode
+ * @param {object} [extra]
+ */
+async function hardNavigateTo(tab, target, settings, mode, extra = {}) {
+  try {
+    await chrome.tabs.update(tab.id, { url: target, active: true });
+  } catch (e) {
+    await debugLog(
+      "spa",
+      "hardNavigateTo update fail",
+      e instanceof Error ? e.message : String(e),
+    );
+    return null;
+  }
+  await focusWindow(tab.windowId);
+  const lastOpen = {
+    at: Date.now(),
+    mode,
+    spa: false,
+    navigated: true,
+    instant: false,
+    target,
+    ...extra,
+  };
+  await touchWarmFromOpen(tab.id, settings, target, {
+    loadStatus: "loading",
+    pendingUrl: target,
+    loadedUrl: null,
+    shellReady: false,
+    spaHops: 0,
+    lastFullLoadAt: Date.now(),
+    shellUntrusted: false,
+    lastOpen,
+  });
+  return {
+    tabId: tab.id,
+    instant: false,
+    navigated: true,
+    spa: false,
+    mode,
+    lastOpen,
+    spaFailReason: extra.spaFailReason,
+  };
 }
 
 function ttlMs(settings) {
@@ -141,6 +239,10 @@ export async function onWarmTabUpdated(tabId, changeInfo, tab) {
       pendingUrl: url || state.pendingUrl,
       loadStatus: "complete",
       shellReady: isXTabUrl(url) ? true : state.shellReady,
+      spaHops: 0,
+      lastFullLoadAt: Date.now(),
+      lastNavAt: Date.now(),
+      shellUntrusted: false,
     });
   }
 }
@@ -162,17 +264,6 @@ export async function ensureWarmTab(settings, opts = {}) {
   return withXTabCreateLock(async () => {
     let state = await getWarmState();
     let tab = await getTabSafe(state.warmTabId);
-
-    if (tab?.discarded) {
-      try {
-        await chrome.tabs.remove(tab.id);
-      } catch {
-        // ignore
-      }
-      await clearWarmState();
-      state = await getWarmState();
-      tab = null;
-    }
 
     if (tab && hasReusableXShell(tab)) {
       const ready = state.shellReady || tab.status === "complete";
@@ -258,58 +349,33 @@ export async function ensureWarmTab(settings, opts = {}) {
 }
 
 /**
+ * 把已有 X 标签导航到 target。壳不可信时整页，不关标签。
+ * @param {chrome.tabs.Tab} tab
  * @param {string} target
  * @param {object} settings
  */
-export async function activateWarmOrNull(target, settings) {
+export async function navigateReusableTab(tab, target, settings) {
   const state = await getWarmState();
-  let tab = await getTabSafe(state.warmTabId);
-  if (!tab || tab.discarded) {
-    const any = await findAnyXTab({ hotOnly: true });
-    if (!any) return null;
-    tab = any;
-    await patchWarmState({
-      warmTabId: any.id,
-      shellReady: any.status === "complete",
-      loadStatus: any.status === "complete" ? "complete" : "loading",
-      loadedUrl: any.url || null,
-    });
-  }
-
-  if (!hasReusableXShell(tab)) return null;
-
-  // 长时间休眠后标签可能 discarded / 冻结：必须整页拉起
-  if (tab.discarded || tab.status === "unloaded") {
-    await chrome.tabs.update(tab.id, { url: target, active: true });
-    await focusWindow(tab.windowId);
-    const lastOpen = {
-      at: Date.now(),
-      mode: "wake_discarded_reload",
-      spa: false,
-      navigated: true,
-      instant: false,
-      target,
-    };
-    await touchWarmFromOpen(tab.id, settings, target, {
-      loadStatus: "loading",
-      pendingUrl: target,
-      loadedUrl: null,
-      shellReady: false,
-      lastOpen,
-    });
-    return {
+  const trustFail = spaTrustFailReason(tab, state);
+  if (trustFail) {
+    await debugLog("spa", "shell untrusted, hard nav", {
+      reason: trustFail,
       tabId: tab.id,
-      instant: false,
-      navigated: true,
-      spa: false,
-      mode: "wake_discarded_reload",
-      lastOpen,
-    };
+      hops: state.spaHops,
+    });
+    const mode =
+      trustFail === "discarded" ||
+      trustFail === "frozen" ||
+      trustFail === "unloaded"
+        ? "wake_discarded_reload"
+        : "stale_shell_hard_nav";
+    return hardNavigateTo(tab, target, settings, mode, {
+      spaFailReason: trustFail,
+    });
   }
 
-  // 1) 已在目标：只激活（严格相等路径才跳过导航）
+  // 1) 已在目标：只激活（页内必须也对得上）
   if (tab.url && urlsLooselyEqual(tab.url, target)) {
-    // 休眠后「URL 相同但页已死」：尝试 SPA ping，失败则强制 reload
     const softSame = await softNavigateXTab(tab.id, target);
     if (
       softSame?.ok ||
@@ -331,6 +397,7 @@ export async function activateWarmOrNull(target, settings) {
         loadedUrl: target,
         pendingUrl: target,
         shellReady: true,
+        lastNavAt: state.lastNavAt,
         lastOpen,
       });
       return {
@@ -342,45 +409,38 @@ export async function activateWarmOrNull(target, settings) {
         lastOpen,
       };
     }
-    // bridge 挂了 / 页冻住：强制刷新到目标
-    await chrome.tabs.update(tab.id, { url: target, active: true });
-    await focusWindow(tab.windowId);
-    const lastOpen = {
-      at: Date.now(),
-      mode: "stale_same_url_reload",
-      spa: false,
-      navigated: true,
-      instant: false,
-      target,
+    return hardNavigateTo(tab, target, settings, "stale_same_url_reload", {
       spaFailReason: softSame?.reason || "stale_shell",
-    };
-    await touchWarmFromOpen(tab.id, settings, target, {
-      loadStatus: "loading",
-      pendingUrl: target,
-      shellReady: false,
-      lastOpen,
     });
-    return {
-      tabId: tab.id,
-      instant: false,
-      navigated: true,
-      spa: false,
-      mode: "stale_same_url_reload",
-      lastOpen,
-    };
   }
 
   // 2) 先置前热壳
   await chrome.tabs.update(tab.id, { active: true });
   await focusWindow(tab.windowId);
 
-  // 3) 真 SPA（同文档 + 内容有更新）
+  // 3) 真 SPA（同文档 + 目标推文已出现）
   const soft = await softNavigateXTab(tab.id, target);
 
   if (soft.ok && soft.sameDocument !== false && !soft.hardNav) {
-    // 二次确认：URL 真的到目标了
     const after = await getTabSafe(tab.id);
     if (after?.url && urlsLooselyEqual(after.url, target)) {
+      const riskyPush =
+        soft.method === "history_pushstate_rerender" ||
+        soft.method === "history_pushstate";
+      if (riskyPush) {
+        await sleep(SPA_TRUST.verifyMs);
+        const settled = await getTabSafe(tab.id);
+        if (!settled?.url || !urlsLooselyEqual(settled.url, target)) {
+          await debugLog("spa", "SPA reverted to previous url", {
+            want: target,
+            got: settled?.url || null,
+          });
+          return hardNavigateTo(tab, target, settings, "spa_reverted_hard_nav", {
+            spaFailReason: "spa_url_reverted",
+            spaMethod: soft.method,
+          });
+        }
+      }
       const lastOpen = {
         at: Date.now(),
         mode: "spa_soft",
@@ -428,6 +488,7 @@ export async function activateWarmOrNull(target, settings) {
       pendingUrl: target,
       loadedUrl: null,
       shellReady: false,
+      spaHops: 0,
       lastOpen,
     });
     return {
@@ -441,17 +502,21 @@ export async function activateWarmOrNull(target, settings) {
     };
   }
 
-  // 5) SPA 失败 / 仅改了 URL 没重绘 / 长时间冻结
-  //    ★ 关键：即使当前 URL 已等于 target（pushState 假成功），也必须 reload
+  // 5) SPA 失败 / 仅改了 URL 没重绘 / 回退到旧帖 / 长时间冻结
   const forceReloadReasons = new Set([
     "spa_url_only_no_rerender",
     "spa_not_applied",
+    "spa_url_reverted",
+    "spa_wrong_status",
+    "spa_stale_same_url",
     "shell_not_hydrated",
     "shell_not_complete",
     "main_timeout",
     "no_bridge",
     "sendMessage_error",
     "stale_shell",
+    "frozen",
+    "discarded",
   ]);
   const mustHardReload =
     !soft.ok ||
@@ -459,7 +524,6 @@ export async function activateWarmOrNull(target, settings) {
     soft.method === "history_pushstate";
 
   if (mustHardReload) {
-    // 用 reload 语义：先跳目标；若已在目标则 reload
     const tabNow = await getTabSafe(tab.id);
     if (tabNow?.url && urlsLooselyEqual(tabNow.url, target)) {
       try {
@@ -482,6 +546,7 @@ export async function activateWarmOrNull(target, settings) {
         loadStatus: "loading",
         pendingUrl: target,
         shellReady: false,
+        spaHops: 0,
         lastOpen,
       });
       return {
@@ -495,63 +560,39 @@ export async function activateWarmOrNull(target, settings) {
       };
     }
 
-    await chrome.tabs.update(tab.id, { url: target, active: true });
-    await focusWindow(tab.windowId);
-    const lastOpen = {
-      at: Date.now(),
-      mode: "full_reload_fallback",
-      spa: false,
+    return hardNavigateTo(tab, target, settings, "full_reload_fallback", {
       spaFailReason: soft.reason || "unknown",
       spaDetail: soft.detail || null,
       logs: soft.logs || null,
-      navigated: true,
-      instant: false,
-      target,
-    };
-    await touchWarmFromOpen(tab.id, settings, target, {
-      loadStatus: "loading",
-      pendingUrl: target,
-      loadedUrl: null,
-      shellReady: false,
-      lastOpen,
     });
-    return {
-      tabId: tab.id,
-      instant: false,
-      navigated: true,
-      spa: false,
-      mode: "full_reload_fallback",
-      spaFailReason: soft.reason,
-      lastOpen,
-    };
   }
 
-  // 兜底
-  await chrome.tabs.update(tab.id, { url: target, active: true });
-  await focusWindow(tab.windowId);
-  const lastOpen = {
-    at: Date.now(),
-    mode: "full_reload_fallback",
-    spa: false,
+  return hardNavigateTo(tab, target, settings, "full_reload_fallback", {
     spaFailReason: soft.reason || "fallback",
-    navigated: true,
-    instant: false,
-    target,
-  };
-  await touchWarmFromOpen(tab.id, settings, target, {
-    loadStatus: "loading",
-    pendingUrl: target,
-    shellReady: false,
-    lastOpen,
   });
-  return {
-    tabId: tab.id,
-    instant: false,
-    navigated: true,
-    spa: false,
-    mode: "full_reload_fallback",
-    lastOpen,
-  };
+}
+
+/**
+ * @param {string} target
+ * @param {object} settings
+ */
+export async function activateWarmOrNull(target, settings) {
+  const state = await getWarmState();
+  let tab = await getTabSafe(state.warmTabId);
+  if (!tab) {
+    const any = await findAnyXTab({ hotOnly: true });
+    if (!any) return null;
+    tab = any;
+    await patchWarmState({
+      warmTabId: any.id,
+      shellReady: any.status === "complete",
+      loadStatus: any.status === "complete" ? "complete" : "loading",
+      loadedUrl: any.url || null,
+    });
+  }
+
+  if (!hasReusableXShell(tab)) return null;
+  return navigateReusableTab(tab, target, settings);
 }
 
 /** @param {number|undefined} windowId */
@@ -589,6 +630,12 @@ export async function releaseWarmTab() {
 export async function onWarmExpireAlarm() {
   const state = await getWarmState();
   if (state.expireAt == null || Date.now() + 500 >= state.expireAt) {
+    const tab = await getTabSafe(state.warmTabId);
+    // 前台正在看：不关标签，只标记下次从外站打开必须整页
+    if (tab?.active) {
+      await patchWarmState({ shellUntrusted: true });
+      return;
+    }
     await releaseWarmTab();
   } else if (state.expireAt) {
     await scheduleExpireAlarm(state.expireAt);
@@ -611,13 +658,11 @@ export async function findAnyXTab(opts = {}) {
     tabs = all.filter((t) => isXTabUrl(t.url));
   }
   let xTabs = tabs.filter((t) => isXTabUrl(t.url));
-  if (opts.hotOnly) {
-    xTabs = xTabs.filter((t) => !t.discarded);
-  }
   if (!xTabs.length) return null;
   xTabs.sort((a, b) => {
-    const ad = a.discarded ? 1 : 0;
-    const bd = b.discarded ? 1 : 0;
+    const asleep = (t) => (t.discarded || t.frozen ? 1 : 0);
+    const ad = asleep(a);
+    const bd = asleep(b);
     if (ad !== bd) return ad - bd;
     return (b.lastAccessed || 0) - (a.lastAccessed || 0);
   });
@@ -633,6 +678,19 @@ export async function findAnyXTab(opts = {}) {
 export async function touchWarmFromOpen(tabId, settings, targetUrl, extra = {}) {
   const expireAt = Date.now() + ttlMs(settings);
   const state = await getWarmState();
+  const isSpa = extra.lastOpen?.spa === true;
+  const recycled = extra.lastOpen?.navigated === true && !isSpa;
+  const spaHops =
+    typeof extra.spaHops === "number"
+      ? extra.spaHops
+      : isSpa
+        ? (Number(state.spaHops) || 0) + 1
+        : recycled
+          ? 0
+          : Number(state.spaHops) || 0;
+  const lastFullLoadAt =
+    extra.lastFullLoadAt ??
+    (isSpa || !recycled ? state.lastFullLoadAt : Date.now());
   await setWarmState({
     warmTabId: tabId,
     expireAt,
@@ -645,6 +703,10 @@ export async function touchWarmFromOpen(tabId, settings, targetUrl, extra = {}) 
         ? extra.shellReady
         : state.shellReady || extra.loadStatus === "complete",
     lastOpen: extra.lastOpen ?? state.lastOpen,
+    spaHops,
+    lastNavAt: extra.lastNavAt ?? Date.now(),
+    lastFullLoadAt,
+    shellUntrusted: extra.shellUntrusted ?? false,
   });
   if (settings.allowBackgroundWarmTab || settings.warmupProfile === "turbo") {
     await scheduleExpireAlarm(expireAt);

@@ -64,7 +64,7 @@
 
     console.log("[XFaster][bridge] SPA_NAV", message.href, location.href);
 
-    requestMain("SPA_NAV", message.href, 6500)
+    requestMain("SPA_NAV", message.href, 8000)
       .then((result) => {
         console.log("[XFaster][bridge] result", result);
         sendResponse(result);
