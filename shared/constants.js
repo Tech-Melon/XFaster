@@ -144,13 +144,9 @@ export const DEFAULT_SETTINGS = {
 export const TTL_OPTIONS = [1, 3, 5, 10, 20, 30, 45, 60];
 
 /**
- * SPA 可信窗口。超出则同标签整页打开目标（不关标签）。
- * 闲置 / 同文档年龄与当前 TTL 对齐（见 ttlMs(settings)），避免 2 分钟就整页。
- * 假成功仍靠 status id + URL 回退纠正，不靠缩短 idle。
+ * SPA 校验。闲置不再预判整页；pushState 成功后再核对 URL，防止路由回退。
  */
 export const SPA_TRUST = {
-  /** 同文档连续 SPA 次数上限 */
-  maxHops: 20,
   /** SPA 报成功后再核对 URL，防止路由回退 */
   verifyMs: 350,
 };

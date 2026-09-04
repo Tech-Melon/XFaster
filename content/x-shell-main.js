@@ -1,6 +1,7 @@
 /**
  * x.com MAIN world — v0.5.2
  * 同文档 SPA；等待 hydrate；路径按 status id 比较
+ * 0.5.34：热路径对齐 0.5.31（地址对上即可软跳）；URL 回退才判失败
  */
 (() => {
   if (window.__xfasterMainInstalled) return;
@@ -220,7 +221,18 @@
               logs,
             };
           }
-          if (pageMatchesTarget(wantKey)) {
+          if (currentKey() === wantKey) {
+            await sleep(200);
+            if (currentKey() !== wantKey) {
+              log("url reverted after existing_link");
+              return {
+                ok: false,
+                reason: "spa_url_reverted",
+                path: currentKey(),
+                want: wantKey,
+                logs,
+              };
+            }
             log("success existing_link_spa");
             return {
               ok: true,
@@ -263,7 +275,8 @@
           };
         }
 
-        // 等内容变化（必须是目标推文，不能拿上一帖 article 充数）
+        // 等内容变化。目标推文出现最理想；否则对齐 0.5.31：地址对 + 内容变/有 tweet 节点。
+        // 成功后再核对 URL，回退才失败（0.5.32 优点）。
         const sid = statusIdFromKey(wantKey);
         let matched = false;
         const end = Date.now() + 1200;
@@ -281,7 +294,7 @@
             matched = true;
             break;
           }
-          if (!sid && currentKey() === wantKey) {
+          if (currentKey() === wantKey) {
             const contentAfter = document
               .getElementById("react-root")
               ?.innerText?.slice(0, 240);
@@ -290,6 +303,14 @@
               contentAfter &&
               contentBefore !== contentAfter
             ) {
+              matched = true;
+              break;
+            }
+            if (document.querySelector('article[data-testid="tweet"]')) {
+              matched = true;
+              break;
+            }
+            if (!sid && hasAppContent()) {
               matched = true;
               break;
             }
@@ -308,16 +329,6 @@
               logs,
             };
           }
-          if (sid && !domHasStatus(sid)) {
-            log("status node disappeared after spa");
-            return {
-              ok: false,
-              reason: "spa_wrong_status",
-              path: currentKey(),
-              want: wantKey,
-              logs,
-            };
-          }
           log("success history_pushstate_rerender");
           return {
             ok: true,
@@ -329,12 +340,23 @@
         }
 
         if (currentKey() === wantKey) {
-          log("url only, no target tweet");
+          await sleep(200);
+          if (currentKey() !== wantKey) {
+            log("url reverted after url-only wait");
+            return {
+              ok: false,
+              reason: "spa_url_reverted",
+              path: currentKey(),
+              want: wantKey,
+              logs,
+            };
+          }
+          log("url settled, accept spa");
           return {
-            ok: false,
-            reason: sid ? "spa_wrong_status" : "spa_url_only_no_rerender",
+            ok: true,
+            method: "history_pushstate_rerender",
             path: currentKey(),
-            want: wantKey,
+            sameDocument: true,
             logs,
           };
         }

@@ -1,10 +1,10 @@
 /**
  * L3 热壳 + 打开路径
  *
- * 打开优先级：
- * 1) 同 URL → 只激活（页内内容也对得上）
- * 2) 壳可信时 SPA 软跳（校验 URL + 目标推文节点）
- * 3) 壳不可信 / SPA 失败 / 回退到旧帖 → 同标签整页打开目标（不关标签）
+ * 打开优先级（0.5.34：热路径对齐 0.5.31，假成功用 URL 回退纠正）：
+ * 1) 同 URL 且页内对得上 → 只激活
+ * 2) 壳还活着 → 一律先 SPA（不因闲置/跳数/TTL 预判整页）
+ * 3) URL 被 X 改回旧帖 / 冻结丢弃 / SPA 没跳上 → 同标签整页（不关标签）
  */
 import {
   ALARM_NAMES,
@@ -100,34 +100,15 @@ function sleep(ms) {
 }
 
 /**
- * 壳是否还适合 SPA。必须在 tabs.update(active) 之前调用，否则 lastAccessed 会被刷新。
- * 闲置 / 同文档年龄与当前 TTL 对齐。
+ * 仅冻结/丢弃的壳不能 SPA。闲置与 TTL 不再预判整页——先软跳，回退再纠正。
  * @param {chrome.tabs.Tab} tab
- * @param {WarmState} state
- * @param {object} settings
  * @returns {string|null} 不可信原因；null 表示可 SPA
  */
-function spaTrustFailReason(tab, state, settings) {
+function spaTrustFailReason(tab) {
   if (!tab) return "no_tab";
   if (tab.discarded) return "discarded";
   if (tab.frozen) return "frozen";
   if (tab.status === "unloaded") return "unloaded";
-  if (state.shellUntrusted) return "shell_untrusted";
-
-  const now = Date.now();
-  const trustMs = ttlMs(settings);
-  const lastAccessed =
-    typeof tab.lastAccessed === "number" ? tab.lastAccessed : 0;
-  const lastNav = state.lastNavAt || state.lastFullLoadAt || 0;
-  const idleRef = Math.max(lastAccessed, lastNav);
-  if (idleRef && now - idleRef > trustMs) return "idle";
-
-  if ((Number(state.spaHops) || 0) >= SPA_TRUST.maxHops) return "max_hops";
-
-  if (state.lastFullLoadAt && now - state.lastFullLoadAt > trustMs) {
-    return "shell_age";
-  }
-
   return null;
 }
 
@@ -356,14 +337,15 @@ export async function ensureWarmTab(settings, opts = {}) {
 }
 
 /**
- * 把已有 X 标签导航到 target。壳不可信时整页，不关标签。
+ * 把已有 X 标签导航到 target。
+ * 冻结/丢弃才预判整页；其余先 SPA，URL 回退再同标签整页。
  * @param {chrome.tabs.Tab} tab
  * @param {string} target
  * @param {object} settings
  */
 export async function navigateReusableTab(tab, target, settings) {
   const state = await getWarmState();
-  const trustFail = spaTrustFailReason(tab, state, settings);
+  const trustFail = spaTrustFailReason(tab);
   if (trustFail) {
     await debugLog("spa", "shell untrusted, hard nav", {
       reason: trustFail,
@@ -425,7 +407,7 @@ export async function navigateReusableTab(tab, target, settings) {
   await chrome.tabs.update(tab.id, { active: true });
   await focusWindow(tab.windowId);
 
-  // 3) 真 SPA（同文档 + 目标推文已出现）
+  // 3) SPA 软跳（同文档）
   const soft = await softNavigateXTab(tab.id, target);
 
   if (soft.ok && soft.sameDocument !== false && !soft.hardNav) {
@@ -475,7 +457,7 @@ export async function navigateReusableTab(tab, target, settings) {
         lastOpen,
       };
     }
-    // SPA 报成功但地址没变 → 强制整页
+    // SPA 报成功但地址没变 → 下面按失败处理
   }
 
   // 4) 已在软跳过程中整页跳到目标（channel closed）→ 禁止再 update 二次刷新
@@ -509,73 +491,91 @@ export async function navigateReusableTab(tab, target, settings) {
     };
   }
 
-  // 5) SPA 失败 / 仅改了 URL 没重绘 / 回退到旧帖 / 长时间冻结
-  const forceReloadReasons = new Set([
-    "spa_url_only_no_rerender",
-    "spa_not_applied",
-    "spa_url_reverted",
-    "spa_wrong_status",
-    "spa_stale_same_url",
-    "shell_not_hydrated",
-    "shell_not_complete",
-    "main_timeout",
-    "no_bridge",
-    "sendMessage_error",
-    "stale_shell",
-    "frozen",
-    "discarded",
-  ]);
-  const mustHardReload =
-    !soft.ok ||
-    forceReloadReasons.has(soft.reason) ||
-    soft.method === "history_pushstate";
+  // 5) 地址已经在目标：不要 tabs.reload 冲掉正在绘制的 SPA
+  //    只有 URL 被改回旧帖、或同 URL 却没有目标推文时才整页
+  const tabNow = await getTabSafe(tab.id);
+  const urlAlreadyTarget =
+    tabNow?.url && urlsLooselyEqual(tabNow.url, target);
+  const mustCorrect =
+    soft.reason === "spa_url_reverted" ||
+    soft.reason === "spa_stale_same_url";
 
-  if (mustHardReload) {
-    const tabNow = await getTabSafe(tab.id);
-    if (tabNow?.url && urlsLooselyEqual(tabNow.url, target)) {
-      try {
-        await chrome.tabs.reload(tab.id);
-      } catch {
-        await chrome.tabs.update(tab.id, { url: target, active: true });
-      }
-      await chrome.tabs.update(tab.id, { active: true });
-      await focusWindow(tab.windowId);
+  if (urlAlreadyTarget && !mustCorrect && !soft.hardNav) {
+    await sleep(SPA_TRUST.verifyMs);
+    const settled = await getTabSafe(tab.id);
+    if (settled?.url && urlsLooselyEqual(settled.url, target)) {
       const lastOpen = {
         at: Date.now(),
-        mode: "force_reload_same_url",
-        spa: false,
-        spaFailReason: soft.reason || "force_reload",
-        navigated: true,
-        instant: false,
+        mode: "spa_soft",
+        spa: true,
+        spaMethod: soft.method || "url_settled",
+        navigated: false,
+        instant: true,
         target,
+        logs: soft.logs || null,
       };
       await touchWarmFromOpen(tab.id, settings, target, {
-        loadStatus: "loading",
+        loadStatus: "complete",
         pendingUrl: target,
-        shellReady: false,
-        spaHops: 0,
+        loadedUrl: target,
+        shellReady: true,
         lastOpen,
       });
       return {
         tabId: tab.id,
-        instant: false,
-        navigated: true,
-        spa: false,
-        mode: "force_reload_same_url",
-        spaFailReason: soft.reason,
+        instant: true,
+        navigated: false,
+        spa: true,
+        mode: "spa_soft",
+        spaMethod: lastOpen.spaMethod,
         lastOpen,
       };
     }
-
-    return hardNavigateTo(tab, target, settings, "full_reload_fallback", {
-      spaFailReason: soft.reason || "unknown",
-      spaDetail: soft.detail || null,
-      logs: soft.logs || null,
+    return hardNavigateTo(tab, target, settings, "spa_reverted_hard_nav", {
+      spaFailReason: "spa_url_reverted",
+      spaMethod: soft.method,
     });
+  }
+
+  if (urlAlreadyTarget && mustCorrect) {
+    try {
+      await chrome.tabs.reload(tab.id);
+    } catch {
+      await chrome.tabs.update(tab.id, { url: target, active: true });
+    }
+    await chrome.tabs.update(tab.id, { active: true });
+    await focusWindow(tab.windowId);
+    const lastOpen = {
+      at: Date.now(),
+      mode: "force_reload_same_url",
+      spa: false,
+      spaFailReason: soft.reason || "force_reload",
+      navigated: true,
+      instant: false,
+      target,
+    };
+    await touchWarmFromOpen(tab.id, settings, target, {
+      loadStatus: "loading",
+      pendingUrl: target,
+      shellReady: false,
+      spaHops: 0,
+      lastOpen,
+    });
+    return {
+      tabId: tab.id,
+      instant: false,
+      navigated: true,
+      spa: false,
+      mode: "force_reload_same_url",
+      spaFailReason: soft.reason,
+      lastOpen,
+    };
   }
 
   return hardNavigateTo(tab, target, settings, "full_reload_fallback", {
     spaFailReason: soft.reason || "fallback",
+    spaDetail: soft.detail || null,
+    logs: soft.logs || null,
   });
 }
 
@@ -637,12 +637,7 @@ export async function releaseWarmTab() {
 export async function onWarmExpireAlarm() {
   const state = await getWarmState();
   if (state.expireAt == null || Date.now() + 500 >= state.expireAt) {
-    const tab = await getTabSafe(state.warmTabId);
-    // 前台正在看：不关标签，只标记下次从外站打开必须整页
-    if (tab?.active) {
-      await patchWarmState({ shellUntrusted: true });
-      return;
-    }
+    // 后台壳释放；前台标签不关，下次仍先 SPA（回退再整页）
     await releaseWarmTab();
   } else if (state.expireAt) {
     await scheduleExpireAlarm(state.expireAt);
