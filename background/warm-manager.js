@@ -6,7 +6,12 @@
  * 2) 壳可信时 SPA 软跳（校验 URL + 目标推文节点）
  * 3) 壳不可信 / SPA 失败 / 回退到旧帖 → 同标签整页打开目标（不关标签）
  */
-import { ALARM_NAMES, SPA_TRUST, STORAGE_KEYS } from "../shared/constants.js";
+import {
+  ALARM_NAMES,
+  DEFAULT_SETTINGS,
+  SPA_TRUST,
+  STORAGE_KEYS,
+} from "../shared/constants.js";
 import {
   isXTabUrl,
   urlsLooselyEqual,
@@ -96,11 +101,13 @@ function sleep(ms) {
 
 /**
  * 壳是否还适合 SPA。必须在 tabs.update(active) 之前调用，否则 lastAccessed 会被刷新。
+ * 闲置 / 同文档年龄与当前 TTL 对齐。
  * @param {chrome.tabs.Tab} tab
  * @param {WarmState} state
+ * @param {object} settings
  * @returns {string|null} 不可信原因；null 表示可 SPA
  */
-function spaTrustFailReason(tab, state) {
+function spaTrustFailReason(tab, state, settings) {
   if (!tab) return "no_tab";
   if (tab.discarded) return "discarded";
   if (tab.frozen) return "frozen";
@@ -108,18 +115,16 @@ function spaTrustFailReason(tab, state) {
   if (state.shellUntrusted) return "shell_untrusted";
 
   const now = Date.now();
+  const trustMs = ttlMs(settings);
   const lastAccessed =
     typeof tab.lastAccessed === "number" ? tab.lastAccessed : 0;
   const lastNav = state.lastNavAt || state.lastFullLoadAt || 0;
   const idleRef = Math.max(lastAccessed, lastNav);
-  if (idleRef && now - idleRef > SPA_TRUST.idleMs) return "idle";
+  if (idleRef && now - idleRef > trustMs) return "idle";
 
   if ((Number(state.spaHops) || 0) >= SPA_TRUST.maxHops) return "max_hops";
 
-  if (
-    state.lastFullLoadAt &&
-    now - state.lastFullLoadAt > SPA_TRUST.maxAgeMs
-  ) {
+  if (state.lastFullLoadAt && now - state.lastFullLoadAt > trustMs) {
     return "shell_age";
   }
 
@@ -177,7 +182,9 @@ async function hardNavigateTo(tab, target, settings, mode, extra = {}) {
 }
 
 function ttlMs(settings) {
-  return (Number(settings.turboTtlMinutes) || 10) * 60 * 1000;
+  const minutes =
+    Number(settings?.turboTtlMinutes) || DEFAULT_SETTINGS.turboTtlMinutes;
+  return minutes * 60 * 1000;
 }
 
 /** @param {number} expireAt */
@@ -356,7 +363,7 @@ export async function ensureWarmTab(settings, opts = {}) {
  */
 export async function navigateReusableTab(tab, target, settings) {
   const state = await getWarmState();
-  const trustFail = spaTrustFailReason(tab, state);
+  const trustFail = spaTrustFailReason(tab, state, settings);
   if (trustFail) {
     await debugLog("spa", "shell untrusted, hard nav", {
       reason: trustFail,

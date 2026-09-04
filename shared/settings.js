@@ -3,6 +3,7 @@
  */
 import {
   DEFAULT_SETTINGS,
+  LEGACY_PROFILE_TTL,
   STORAGE_KEYS,
   WARMUP_PROFILES,
 } from "./constants.js";
@@ -101,7 +102,10 @@ export function applyWarmupProfile(settings, profileId) {
     allowBackgroundWarmTab: profile.allowBackgroundWarmTab,
     autoWarmOnLinks: profile.autoWarmOnLinks,
     autoWarmOnHover: profile.autoWarmOnHover,
-    turboTtlMinutes: profile.ttlMinutes ?? settings.turboTtlMinutes ?? 20,
+    turboTtlMinutes:
+      profile.ttlMinutes ??
+      settings.turboTtlMinutes ??
+      DEFAULT_SETTINGS.turboTtlMinutes,
   });
 }
 
@@ -110,16 +114,46 @@ export async function getSettings() {
   return normalizeSettings(data[STORAGE_KEYS.SETTINGS] || {});
 }
 
-function clampTtl(v, fallback = 20) {
+function clampTtl(v, fallback = DEFAULT_SETTINGS.turboTtlMinutes) {
   let ttl = Number(v);
   if (!Number.isFinite(ttl) || ttl < 1) ttl = fallback;
   if (ttl > 60) ttl = 60;
   return Math.round(ttl);
 }
 
+const PERSIST_FLAGS = {
+  _perfV3: true,
+  _ttl20: true,
+  _ttl30: true,
+  _balanceV5: true,
+  _imgBadgeV1: true,
+};
+
+/**
+ * 档位仍是 0.5.32 及更早的预设 TTL 时，上调一档。
+ * 用户手动改过的值（与当时档位预设不同）一律保留。
+ * @param {object} raw
+ */
+function bumpLegacyProfileTtl(raw) {
+  const profile = raw.warmupProfile || "balanced";
+  const oldPreset = LEGACY_PROFILE_TTL[profile];
+  const nextPreset = WARMUP_PROFILES[profile]?.ttlMinutes;
+  const ttl = Number(raw.turboTtlMinutes);
+  if (
+    Number.isFinite(ttl) &&
+    oldPreset != null &&
+    nextPreset != null &&
+    ttl === oldPreset
+  ) {
+    return { ...raw, turboTtlMinutes: nextPreset };
+  }
+  return raw;
+}
+
 /**
  * 迁移链：
  * - _balanceV5：从过保守的 perf 默认回到「有链接就暖壳」
+ * - _ttl30：档位仍是旧预设时 TTL 上调一档；手动改过的值保留
  * - 保留用户手动改过的 eco/turbo
  */
 export async function migrateSettingsIfNeeded() {
@@ -129,14 +163,13 @@ export async function migrateSettingsIfNeeded() {
   if (!raw || typeof raw !== "object") {
     const fresh = {
       ...DEFAULT_SETTINGS,
-      _perfV3: true,
-      _ttl20: true,
-      _balanceV5: true,
-      _imgBadgeV1: true,
+      ...PERSIST_FLAGS,
     };
     await chrome.storage.sync.set({ [STORAGE_KEYS.SETTINGS]: fresh });
     return normalizeSettings(fresh);
   }
+
+  let dirty = false;
 
   // 0.5.23：旧默认「拦截右键」会挡另存为，一次性改为 badge（不抢菜单）
   if (raw._imgBadgeV1 !== true) {
@@ -148,15 +181,21 @@ export async function migrateSettingsIfNeeded() {
           : raw.imageSearchTrigger,
       _imgBadgeV1: true,
     };
-    // 已完成 balance 迁移的用户：只写回识图触发，直接返回
-    if (raw._balanceV5 === true) {
+    dirty = true;
+  }
+
+  // 0.5.33：idle 与 TTL 对齐，档位预设上调一档
+  if (raw._ttl30 !== true) {
+    raw = { ...bumpLegacyProfileTtl(raw), _ttl30: true };
+    dirty = true;
+  }
+
+  if (raw._balanceV5 === true) {
+    if (dirty) {
       const patched = normalizeSettings(raw);
       await chrome.storage.sync.set({ [STORAGE_KEYS.SETTINGS]: patched });
       return patched;
     }
-  }
-
-  if (raw._balanceV5 === true) {
     return normalizeSettings(raw);
   }
 
@@ -165,11 +204,11 @@ export async function migrateSettingsIfNeeded() {
   if (profile === "eco") {
     const next = normalizeSettings({
       ...raw,
-      turboTtlMinutes: clampTtl(raw.turboTtlMinutes, 20),
-      _perfV3: true,
-      _ttl20: true,
-      _balanceV5: true,
-      _imgBadgeV1: true,
+      turboTtlMinutes: clampTtl(
+        raw.turboTtlMinutes,
+        DEFAULT_SETTINGS.turboTtlMinutes,
+      ),
+      ...PERSIST_FLAGS,
     });
     await chrome.storage.sync.set({ [STORAGE_KEYS.SETTINGS]: next });
     return next;
@@ -191,19 +230,19 @@ export async function migrateSettingsIfNeeded() {
   );
 
   // 若用户已有合理 TTL 则尽量保留，否则用档位默认
-  let ttl = clampTtl(raw.turboTtlMinutes, applied.turboTtlMinutes || 20);
+  let ttl = clampTtl(
+    raw.turboTtlMinutes,
+    applied.turboTtlMinutes || DEFAULT_SETTINGS.turboTtlMinutes,
+  );
   if (!Number.isFinite(Number(raw.turboTtlMinutes))) {
-    ttl = applied.turboTtlMinutes || 20;
+    ttl = applied.turboTtlMinutes || DEFAULT_SETTINGS.turboTtlMinutes;
   }
 
   const final = normalizeSettings({
     ...applied,
     turboTtlMinutes: ttl,
     imageSearchTrigger: raw.imageSearchTrigger || "badge",
-    _perfV3: true,
-    _ttl20: true,
-    _balanceV5: true,
-    _imgBadgeV1: true,
+    ...PERSIST_FLAGS,
   });
 
   await chrome.storage.sync.set({ [STORAGE_KEYS.SETTINGS]: final });
@@ -215,21 +254,31 @@ export async function migrateSettingsIfNeeded() {
  * @param {{ asProfile?: "eco"|"balanced"|"turbo" }} [opts]
  */
 export async function saveSettings(patch, opts = {}) {
-  const current = await getSettings();
+  const data = await chrome.storage.sync.get(STORAGE_KEYS.SETTINGS);
+  let stored = data[STORAGE_KEYS.SETTINGS] || {};
+  const ttlBeforeBump = Number(stored.turboTtlMinutes);
+  if (stored._ttl30 !== true) {
+    stored = { ...bumpLegacyProfileTtl(stored), _ttl30: true };
+  }
+  const current = normalizeSettings(stored);
   let next = normalizeSettings({
     ...current,
     ...patch,
-    _perfV3: true,
-    _ttl20: true,
-    _balanceV5: true,
+    ...PERSIST_FLAGS,
   });
+  // 设置页若仍带着升级前的档位预设，不要把已上调的 TTL 写回去
+  if (
+    Number.isFinite(ttlBeforeBump) &&
+    Number(patch.turboTtlMinutes) === ttlBeforeBump &&
+    current.turboTtlMinutes !== ttlBeforeBump
+  ) {
+    next.turboTtlMinutes = current.turboTtlMinutes;
+  }
   if (opts.asProfile) {
     next = applyWarmupProfile(next, opts.asProfile);
     next = normalizeSettings({
       ...next,
-      _perfV3: true,
-      _ttl20: true,
-      _balanceV5: true,
+      ...PERSIST_FLAGS,
     });
   }
   await chrome.storage.sync.set({ [STORAGE_KEYS.SETTINGS]: next });
@@ -239,9 +288,7 @@ export async function saveSettings(patch, opts = {}) {
 export async function resetSettings() {
   const fresh = {
     ...DEFAULT_SETTINGS,
-    _perfV3: true,
-    _ttl20: true,
-    _balanceV5: true,
+    ...PERSIST_FLAGS,
   };
   await chrome.storage.sync.set({ [STORAGE_KEYS.SETTINGS]: fresh });
   return normalizeSettings(fresh);

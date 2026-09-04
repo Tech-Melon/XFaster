@@ -70,8 +70,8 @@ const DICT = {
     en: "Warm shell + hover detect; longer TTL",
   },
   "profile.desc.turbo": {
-    zh: "暖壳 + 悬停预热；TTL 45 分钟",
-    en: "Warm shell + hover preload; 45 min TTL",
+    zh: "暖壳 + 悬停预热；TTL 60 分钟",
+    en: "Warm shell + hover preload; 60 min TTL",
   },
   "profile.descLine": {
     zh: "{desc} · TTL {ttl} 分钟",
@@ -275,8 +275,8 @@ const DICT = {
   // —— options ——
   "opt.title": { zh: "Tech Melon XFaster 设置", en: "Tech Melon XFaster Settings" },
   "opt.hero": {
-    zh: "默认（均衡折中）：页面有推特链接时自动暖 1 个壳 · TTL 20 分钟（最长 1 小时）· 不悬停狂预热 · 省电/极速可在下方切换",
-    en: "Default (Balanced): warm 1 shell when X links appear · TTL 20 min (max 1h) · no aggressive hover warm · switch Eco/Turbo below",
+    zh: "默认（均衡折中）：页面有推特链接时自动暖 1 个壳 · TTL 30 分钟（最长 1 小时）· 不悬停狂预热 · 省电/极速可在下方切换",
+    en: "Default (Balanced): warm 1 shell when X links appear · TTL 30 min (max 1h) · no aggressive hover warm · switch Eco/Turbo below",
   },
   "opt.sec.open": { zh: "打开方式", en: "Open behavior" },
   "opt.openMode": { zh: "默认打开位置", en: "Default open target" },
@@ -309,35 +309,35 @@ const DICT = {
     en: "Balanced — warm when links found (default)",
   },
   "opt.profile.fast": {
-    zh: "快速 — 暖壳 + 悬停检测 · TTL 30m",
-    en: "Fast — warm + hover detect · TTL 30m",
+    zh: "快速 — 暖壳 + 悬停检测 · TTL 45m",
+    en: "Fast — warm + hover detect · TTL 45m",
   },
   "opt.profile.turbo": {
-    zh: "极速 — 暖壳 + 悬停预热 · TTL 45m",
-    en: "Turbo — warm + hover preload · TTL 45m",
+    zh: "极速 — 暖壳 + 悬停预热 · TTL 60m",
+    en: "Turbo — warm + hover preload · TTL 60m",
   },
   "opt.hint.eco": {
     zh: "节能：几乎无后台，不暖壳。最省内存。",
     en: "Eco: almost no background, no warm shell. Lowest memory.",
   },
   "opt.hint.balanced": {
-    zh: "均衡（默认）：有推特链接时暖 1 壳，TTL 20 分钟。不悬停预热。",
-    en: "Balanced (default): warm 1 shell when X links appear, TTL 20 min. No hover preload.",
+    zh: "均衡（默认）：有推特链接时暖 1 壳，TTL 30 分钟。不悬停预热。",
+    en: "Balanced (default): warm 1 shell when X links appear, TTL 30 min. No hover preload.",
   },
   "opt.hint.fast": {
-    zh: "快速：暖壳 + 悬停意图检测，TTL 30 分钟。比均衡更积极。",
-    en: "Fast: warm shell + hover intent, TTL 30 min. More aggressive than Balanced.",
+    zh: "快速：暖壳 + 悬停意图检测，TTL 45 分钟。比均衡更积极。",
+    en: "Fast: warm shell + hover intent, TTL 45 min. More aggressive than Balanced.",
   },
   "opt.hint.turbo": {
-    zh: "极速：暖壳 + 悬停预热，TTL 45 分钟。最快也最占资源。",
-    en: "Turbo: warm shell + hover preload, TTL 45 min. Fastest, heaviest.",
+    zh: "极速：暖壳 + 悬停预热，TTL 60 分钟。最快也最占资源。",
+    en: "Turbo: warm shell + hover preload, TTL 60 min. Fastest, heaviest.",
   },
   "opt.ttl": { zh: "热实例最长存活 N 分钟", en: "Warm shell max lifetime (minutes)" },
   "opt.ttl.opt": { zh: "{n} 分钟", en: "{n} min" },
-  "opt.ttl.20": { zh: "20 分钟（均衡默认）", en: "20 min (Balanced default)" },
-  "opt.ttl.30": { zh: "30 分钟（快速）", en: "30 min (Fast)" },
-  "opt.ttl.45": { zh: "45 分钟（极速）", en: "45 min (Turbo)" },
-  "opt.ttl.60": { zh: "60 分钟（最大）", en: "60 min (max)" },
+  "opt.ttl.20": { zh: "20 分钟", en: "20 min" },
+  "opt.ttl.30": { zh: "30 分钟（均衡默认）", en: "30 min (Balanced default)" },
+  "opt.ttl.45": { zh: "45 分钟（快速）", en: "45 min (Fast)" },
+  "opt.ttl.60": { zh: "60 分钟（极速 / 最大）", en: "60 min (Turbo / max)" },
   "opt.warmUrl": { zh: "预热入口 URL", en: "Warm entry URL" },
   "opt.allowL3": {
     zh: "允许后台热标签（L3，全局最多 1 个）",

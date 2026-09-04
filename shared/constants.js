@@ -62,7 +62,7 @@ export const WARMUP_PROFILES = {
     allowBackgroundWarmTab: true,
     autoWarmOnLinks: true,
     autoWarmOnHover: false,
-    ttlMinutes: 20,
+    ttlMinutes: 30,
     desc: "有链接暖 1 壳，速度与占用折中",
   },
   fast: {
@@ -74,8 +74,8 @@ export const WARMUP_PROFILES = {
     allowBackgroundWarmTab: true,
     autoWarmOnLinks: true,
     autoWarmOnHover: false,
-    ttlMinutes: 30,
-    desc: "暖壳 + 悬停检测；TTL 更长",
+    ttlMinutes: 45,
+    desc: "暖壳 + 悬停检测；TTL 45 分钟",
   },
   turbo: {
     id: "turbo",
@@ -86,8 +86,8 @@ export const WARMUP_PROFILES = {
     allowBackgroundWarmTab: true,
     autoWarmOnLinks: true,
     autoWarmOnHover: true,
-    ttlMinutes: 45,
-    desc: "暖壳 + 悬停预热；TTL 45 分钟",
+    ttlMinutes: 60,
+    desc: "暖壳 + 悬停预热；TTL 60 分钟",
   },
 };
 
@@ -101,7 +101,7 @@ export const DEFAULT_SETTINGS = {
   normalizeToXCom: true,
 
   warmupProfile: "balanced",
-  turboTtlMinutes: 20,
+  turboTtlMinutes: 30,
   allowBackgroundWarmTab: true,
   autoWarmOnLinks: true,
   autoWarmOnHover: false,
@@ -145,15 +145,20 @@ export const TTL_OPTIONS = [1, 3, 5, 10, 20, 30, 45, 60];
 
 /**
  * SPA 可信窗口。超出则同标签整页打开目标（不关标签）。
- * 闲置后 X 路由常把 pushState 回退到上一帖，扩展却误报真 SPA。
+ * 闲置 / 同文档年龄与当前 TTL 对齐（见 ttlMs(settings)），避免 2 分钟就整页。
+ * 假成功仍靠 status id + URL 回退纠正，不靠缩短 idle。
  */
 export const SPA_TRUST = {
-  /** 标签未前台 / 未通过扩展打开超过此时长 → 不信任 SPA */
-  idleMs: 2 * 60 * 1000,
   /** 同文档连续 SPA 次数上限 */
   maxHops: 20,
-  /** 距上次整页加载超过此时长 → 强制整页 */
-  maxAgeMs: 15 * 60 * 1000,
   /** SPA 报成功后再核对 URL，防止路由回退 */
   verifyMs: 350,
+};
+
+/** 0.5.32 及更早的档位 TTL 预设；仅用于一次性上调迁移 */
+export const LEGACY_PROFILE_TTL = {
+  eco: 10,
+  balanced: 20,
+  fast: 30,
+  turbo: 45,
 };
