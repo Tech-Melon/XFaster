@@ -5,9 +5,13 @@
  * 页面 content 脚本未注入 → 点链接原生新开 X 标签
  * → 捕获层关掉冷标签 → 焦点曾回到原页 → 再切热壳
  *
- * 正确顺序：冷标签立刻 active:false（不要先激活原页）
- *         → 立刻 openHandler 激活热壳
+ * 正确顺序：立刻 openHandler 激活热壳（焦点直接去 X）
  *         → 再删冷标签
+ *
+ * 0.5.35：
+ * - Chromium 的 tabs.update({active:false}) 是空操作（源码 UpdateActiveTab：
+ *   !active 直接 return），旧版的「取消激活冷标签」从未生效，只白耗一次 API 往返，已删除
+ * - tabs.onUpdated 只接管「刚新建」的标签；用户在已有标签里点 X 链接 / 手输网址不再被关掉
  */
 import { debugLog } from "../shared/debug.js";
 import { getSettings } from "../shared/settings.js";
@@ -23,8 +27,8 @@ let openHandler = null;
 
 const recentKeys = new Map();
 const inflightTabs = new Set();
-/** 刚创建、怀疑会跳到 X 的标签（opener 非 X） */
-const suspectBlankTabs = new Map(); // tabId -> { openerTabId, at }
+/** 刚创建、怀疑会跳到 X 的标签（opener 非 X）；只有它们会被 tabs.onUpdated 接管 */
+const suspectNewTabs = new Map(); // tabId -> { openerTabId, at }
 const DEDUPE_MS = 1500;
 const SUSPECT_TTL_MS = 8000;
 let installed = false;
@@ -77,18 +81,6 @@ function isCapturableXUrl(url) {
 }
 
 /**
- * 只取消冷标签激活，不要把焦点踢回原页（那会造成「先闪原页再进 X」）
- * @param {number} tabId
- */
-async function deactivateColdTab(tabId) {
-  try {
-    await chrome.tabs.update(tabId, { active: false, autoDiscardable: true });
-  } catch {
-    // ignore
-  }
-}
-
-/**
  * @param {object} opts
  * @param {number} opts.tabId
  * @param {string} opts.url
@@ -125,7 +117,6 @@ export async function tryCaptureExternalXOpen(opts) {
   if (shouldDedupe(key)) {
     try {
       if (!isOwnedTab(tabId)) {
-        await deactivateColdTab(tabId);
         await chrome.tabs.remove(tabId);
       }
     } catch {
@@ -135,7 +126,7 @@ export async function tryCaptureExternalXOpen(opts) {
   }
 
   inflightTabs.add(tabId);
-  suspectBlankTabs.delete(tabId);
+  suspectNewTabs.delete(tabId);
 
   try {
     await debugLog("capture", "hijack external x open", {
@@ -145,10 +136,7 @@ export async function tryCaptureExternalXOpen(opts) {
       source,
     });
 
-    // ① 立刻取消冷标签激活（不要 active 回原页）
-    await deactivateColdTab(tabId);
-
-    // ② 先切到热壳 / 打开逻辑（焦点直接去 X，跳过原页）
+    // ① 先切到热壳 / 打开逻辑（焦点直接去 X，跳过原页）
     const opened = await openHandler({
       url: target,
       settings,
@@ -169,7 +157,7 @@ export async function tryCaptureExternalXOpen(opts) {
       }
     }
 
-    // ③ 再删冷标签
+    // ② 再删冷标签
     try {
       if (!isOwnedTab(tabId)) {
         await chrome.tabs.remove(tabId);
@@ -193,16 +181,9 @@ export function installNavCapture() {
       async (details) => {
         try {
           const url = details.url;
-          // 一创建就取消激活，防止闪屏
-          try {
-            await chrome.tabs.update(details.tabId, { active: false });
-          } catch {
-            // ignore
-          }
-
           if (!isCapturableXUrl(url)) {
             if (!url || url === "about:blank") {
-              suspectBlankTabs.set(details.tabId, {
+              suspectNewTabs.set(details.tabId, {
                 openerTabId: details.sourceTabId,
                 at: Date.now(),
               });
@@ -228,16 +209,24 @@ export function installNavCapture() {
 
   chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     if (!changeInfo.url) return;
-    if (!isCapturableXUrl(changeInfo.url)) return;
+    // 只接管刚新建的标签：已有标签（哪怕带 opener）里的站内跳转 / 手输网址一律放行
+    const suspect = suspectNewTabs.get(tabId);
+    if (!suspect) return;
+    if (Date.now() - suspect.at > SUSPECT_TTL_MS) {
+      suspectNewTabs.delete(tabId);
+      return;
+    }
+    if (!isCapturableXUrl(changeInfo.url)) {
+      // 已落到普通网页：不再是「冷开 X」嫌疑
+      if (changeInfo.url !== "about:blank") suspectNewTabs.delete(tabId);
+      return;
+    }
     if (isOwnedTab(tabId)) return;
 
-    const suspect = suspectBlankTabs.get(tabId);
-    const openerTabId = tab.openerTabId ?? suspect?.openerTabId;
+    const openerTabId = suspect.openerTabId ?? tab.openerTabId;
     if (openerTabId == null) return;
 
     try {
-      // 再次确保冷标签未抢焦点
-      await deactivateColdTab(tabId);
       await tryCaptureExternalXOpen({
         tabId,
         url: changeInfo.url,
@@ -249,45 +238,33 @@ export function installNavCapture() {
     }
   });
 
-  chrome.tabs.onCreated.addListener(async (tab) => {
-    try {
-      if (tab.id == null || isOwnedTab(tab.id)) return;
-      const pending = tab.pendingUrl || tab.url || "";
-      if (isCapturableXUrl(pending)) {
-        await chrome.tabs.update(tab.id, { active: false });
-        return;
-      }
-      // 带 opener 的 about:blank：标记为嫌疑，等 URL 变 X
-      if (tab.openerTabId != null && (!pending || pending === "about:blank")) {
-        try {
-          const opener = await chrome.tabs.get(tab.openerTabId);
-          if (!isXTabUrl(opener.url)) {
-            await chrome.tabs.update(tab.id, { active: false });
-            suspectBlankTabs.set(tab.id, {
-              openerTabId: tab.openerTabId,
-              at: Date.now(),
-            });
-          }
-        } catch {
-          // ignore
-        }
-      }
-    } catch {
-      // ignore
+  chrome.tabs.onCreated.addListener((tab) => {
+    if (tab.id == null || isOwnedTab(tab.id)) return;
+    if (tab.openerTabId == null) return;
+    const pending = tab.pendingUrl || tab.url || "";
+    // 新开的标签（目标是 X 或还是空白）：同步标记嫌疑，避免 onUpdated 先到时漏判。
+    // opener 是不是 X 由 tryCaptureExternalXOpen 统一检查。
+    const maybeX =
+      !pending || pending === "about:blank" || isCapturableXUrl(pending);
+    if (maybeX) {
+      suspectNewTabs.set(tab.id, {
+        openerTabId: tab.openerTabId,
+        at: Date.now(),
+      });
     }
   });
 
   chrome.tabs.onRemoved.addListener((tabId) => {
     unmarkOwnedTab(tabId);
     inflightTabs.delete(tabId);
-    suspectBlankTabs.delete(tabId);
+    suspectNewTabs.delete(tabId);
   });
 
   // 清理过期嫌疑
   setInterval(() => {
     const now = Date.now();
-    for (const [id, info] of suspectBlankTabs) {
-      if (now - info.at > SUSPECT_TTL_MS) suspectBlankTabs.delete(id);
+    for (const [id, info] of suspectNewTabs) {
+      if (now - info.at > SUSPECT_TTL_MS) suspectNewTabs.delete(id);
     }
   }, 5000);
 }

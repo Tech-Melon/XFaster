@@ -39,8 +39,18 @@ export async function softNavigateXTab(tabId, targetUrl) {
       return { ok: false, reason: "discarded" };
     }
     if (tab.frozen) {
-      await debugLog("spa", "fail frozen");
-      return { ok: false, reason: "frozen" };
+      // 置前后 Chrome 会解冻（文档还在）；等它恢复后再软跳
+      try {
+        await chrome.tabs.update(tabId, { active: true });
+      } catch {
+        // ignore
+      }
+      const t0 = Date.now();
+      const thawed = await waitUnfrozen(tabId, 1500);
+      await debugLog("spa", "wait unfreeze", { thawed, ms: Date.now() - t0 });
+      if (!thawed) {
+        return { ok: false, reason: "frozen" };
+      }
     }
     try {
       const u = new URL(targetUrl);
@@ -54,26 +64,18 @@ export async function softNavigateXTab(tabId, targetUrl) {
     }
 
     if (tab.status !== "complete") {
+      // 0.5.35：暖壳还在加载时最多等 300ms。原来等 3 秒再整页，等于白等 3 秒；
+      // 还在加载的壳没东西可软跳，直接同标签打开目标更快。
       await debugLog("spa", "wait shell complete…");
-      const ready = await waitTabComplete(tabId, 3000);
+      const ready = await waitTabComplete(tabId, 300);
       await debugLog("spa", "shell complete?", ready);
       if (!ready) {
         return { ok: false, reason: "shell_not_complete" };
       }
     }
 
-    // 轻量 ping：确认 bridge 活着 + MAIN hydrate 状态
-    try {
-      const ping = await chrome.tabs.sendMessage(tabId, { type: "SPA_PING" });
-      await debugLog("spa", "SPA_PING", ping);
-    } catch (e) {
-      await debugLog(
-        "spa",
-        "SPA_PING fail (will reinject on SPA_NAV)",
-        e instanceof Error ? e.message : String(e),
-      );
-    }
-
+    // 0.5.35：热路径不再先发 SPA_PING。它只是诊断用，MAIN 无响应时会白等 2 秒；
+    // bridge 缺失由 tryBridge 的 reinject 处理。
     const urlBefore = tab.url;
     const viaBridge = await tryBridge(tabId, targetUrl, urlBefore);
     await debugLog("spa", "bridge final", viaBridge);
@@ -110,8 +112,9 @@ async function tryBridge(tabId, targetUrl, urlBefore) {
       /message channel closed|asynchronous response/i.test(msg) ||
       /receiving end does not exist/i.test(msg);
 
-    // 等导航落稳
-    await sleep(150);
+    const noReceiver = /Receiving end does not exist|Could not establish connection/i.test(msg);
+    // 等导航落稳。没有接收端（扩展更新后 bridge 未注入）时页面没动，不用等
+    if (!noReceiver) await sleep(150);
     let tabAfter = null;
     try {
       tabAfter = await chrome.tabs.get(tabId);
@@ -162,7 +165,7 @@ async function tryBridge(tabId, targetUrl, urlBefore) {
     }
 
     // 真·无 listener：动态注入后再试一次（仅 Receiving end 类）
-    if (/Receiving end does not exist|Could not establish connection/i.test(msg)) {
+    if (noReceiver) {
       const reinjected = await reinjectBridges(tabId);
       await debugLog("spa", "reinject bridges", reinjected);
       if (!reinjected.ok) {
@@ -233,6 +236,24 @@ async function reinjectBridges(tabId) {
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * @param {number} tabId
+ * @param {number} timeoutMs
+ */
+async function waitUnfrozen(tabId, timeoutMs) {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    try {
+      const t = await chrome.tabs.get(tabId);
+      if (!t.frozen && !t.discarded) return true;
+    } catch {
+      return false;
+    }
+    await sleep(50);
+  }
+  return false;
 }
 
 /**

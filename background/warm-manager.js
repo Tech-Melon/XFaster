@@ -35,10 +35,19 @@ import { hasReusableXShell, softNavigateXTab } from "./spa-nav.js";
  * @property {boolean} shellUntrusted  TTL 到期或健康检查失败，下次整页
  */
 
+/**
+ * warmTabId 的内存镜像：tabs.onUpdated 对全浏览器每个标签都会触发，
+ * 用它先过滤，非热壳标签不再读 storage.session。
+ * undefined = SW 刚启动还没读过，此时退回读 storage。
+ * @type {number|null|undefined}
+ */
+let warmTabIdMirror;
+
 /** @returns {Promise<WarmState>} */
 export async function getWarmState() {
   const data = await chrome.storage.session.get(STORAGE_KEYS.WARM_STATE);
   const s = data[STORAGE_KEYS.WARM_STATE] || {};
+  warmTabIdMirror = typeof s.warmTabId === "number" ? s.warmTabId : null;
   return {
     warmTabId: typeof s.warmTabId === "number" ? s.warmTabId : null,
     expireAt: typeof s.expireAt === "number" ? s.expireAt : null,
@@ -59,11 +68,12 @@ export async function getWarmState() {
 export async function patchWarmState(patch) {
   const cur = await getWarmState();
   const next = { ...cur, ...patch };
-  await chrome.storage.session.set({ [STORAGE_KEYS.WARM_STATE]: next });
+  await setWarmState(next);
   return next;
 }
 
 export async function setWarmState(state) {
+  warmTabIdMirror = typeof state?.warmTabId === "number" ? state.warmTabId : null;
   await chrome.storage.session.set({ [STORAGE_KEYS.WARM_STATE]: state });
 }
 
@@ -107,7 +117,8 @@ function sleep(ms) {
 function spaTrustFailReason(tab) {
   if (!tab) return "no_tab";
   if (tab.discarded) return "discarded";
-  if (tab.frozen) return "frozen";
+  // 0.5.35：frozen 不再预判整页。激活后 Chrome 会解冻，文档还在，先等解冻再软跳；
+  // 整页重载登录态 X 要好几秒，正是「点了要等几秒」的来源之一。
   if (tab.status === "unloaded") return "unloaded";
   return null;
 }
@@ -209,6 +220,7 @@ export function withXTabCreateLock(fn) {
  * @param {chrome.tabs.Tab} tab
  */
 export async function onWarmTabUpdated(tabId, changeInfo, tab) {
+  if (warmTabIdMirror !== undefined && warmTabIdMirror !== tabId) return;
   const state = await getWarmState();
   if (state.warmTabId !== tabId) return;
 
@@ -363,6 +375,34 @@ export async function navigateReusableTab(tab, target, settings) {
     });
   }
 
+  // 0) 正在整页加载的就是目标：只激活，不要再 reload 一次
+  const loadingUrl = tab.pendingUrl || tab.url;
+  if (tab.status === "loading" && loadingUrl && urlsLooselyEqual(loadingUrl, target)) {
+    await chrome.tabs.update(tab.id, { active: true });
+    await focusWindow(tab.windowId);
+    const lastOpen = {
+      at: Date.now(),
+      mode: "activate_loading",
+      spa: false,
+      navigated: false,
+      instant: false,
+      target,
+    };
+    await touchWarmFromOpen(tab.id, settings, target, {
+      loadStatus: "loading",
+      pendingUrl: target,
+      lastOpen,
+    });
+    return {
+      tabId: tab.id,
+      instant: false,
+      navigated: false,
+      spa: false,
+      mode: "activate_loading",
+      lastOpen,
+    };
+  }
+
   // 1) 已在目标：只激活（页内必须也对得上）
   if (tab.url && urlsLooselyEqual(tab.url, target)) {
     const softSame = await softNavigateXTab(tab.id, target);
@@ -498,7 +538,8 @@ export async function navigateReusableTab(tab, target, settings) {
     tabNow?.url && urlsLooselyEqual(tabNow.url, target);
   const mustCorrect =
     soft.reason === "spa_url_reverted" ||
-    soft.reason === "spa_stale_same_url";
+    soft.reason === "spa_stale_same_url" ||
+    soft.reason === "spa_route_error";
 
   if (urlAlreadyTarget && !mustCorrect && !soft.hardNav) {
     await sleep(SPA_TRUST.verifyMs);

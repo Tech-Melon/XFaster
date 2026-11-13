@@ -1,12 +1,20 @@
 /**
- * x.com MAIN world — v0.5.2
+ * x.com MAIN world — v0.5.35
  * 同文档 SPA；等待 hydrate；路径按 status id 比较
  * 0.5.34：热路径对齐 0.5.31（地址对上即可软跳）；URL 回退才判失败
+ * 0.5.35：适配新版 x-web（TanStack Router + Tailwind，无 #react-root / data-testid）
+ *   - 经 React fiber 找到 router 实例，优先 router.navigate（真 SPA，无需猜 DOM）
+ *   - hydrate / 推文检测不再依赖 data-testid，旧版选择器保留兼容
  */
 (() => {
-  if (window.__xfasterMainInstalled) return;
-  window.__xfasterMainInstalled = true;
-  window.__xfasterDocId = `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  // 必须与 manifest.json version、x-shell-bridge.js 一致（tools_pack_check.py 会校验）
+  const XF_BUILD = "0.5.35";
+  // 按 build 去重：扩展更新后重注入可装上新版；旧版残留只响应旧 build 的消息
+  const installed = (window.__xfasterMainBuilds ||= {});
+  if (installed[XF_BUILD]) return;
+  installed[XF_BUILD] = true;
+  // 同一文档只生成一次，用来识别整页导航
+  window.__xfasterDocId ||= `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
   const X_HOSTS = new Set([
     "x.com",
@@ -53,12 +61,65 @@
     return m ? m[1] : null;
   };
 
+  /**
+   * 新版 x-web 的 TanStack Router 实例（经 React fiber 向上找 Context Provider）。
+   * 找不到返回 null（旧版 X / 尚未 hydrate），调用方回退旧策略。
+   */
+  const isRouter = (v) =>
+    Boolean(
+      v &&
+        typeof v.navigate === "function" &&
+        v.history &&
+        typeof v.history.push === "function" &&
+        v.state &&
+        v.state.location,
+    );
+
+  function routerFromElement(el) {
+    if (!el) return null;
+    const fk = Object.keys(el).find((k) => k.startsWith("__reactFiber$"));
+    if (!fk) return null;
+    let f = el[fk];
+    for (let d = 0; f && d < 600; d++) {
+      const p = f.memoizedProps;
+      if (p) {
+        if (isRouter(p.value)) return p.value;
+        if (isRouter(p.router)) return p.router;
+      }
+      f = f.return;
+    }
+    return null;
+  }
+
+  function findRouter() {
+    const cached = window.__xfasterRouter;
+    if (isRouter(cached)) return cached;
+    try {
+      const candidates = [
+        document.body?.firstElementChild,
+        document.querySelector("main"),
+        document.querySelector("a[href]"),
+      ];
+      for (const el of candidates) {
+        const r = routerFromElement(el);
+        if (r) {
+          window.__xfasterRouter = r;
+          return r;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
   /** 页内是否已经画出目标推文（不能拿上一帖的 article 充数） */
   function domHasStatus(statusId) {
     if (!statusId) return false;
     const want = `status:${statusId}`;
     try {
-      const articles = document.querySelectorAll('article[data-testid="tweet"]');
+      // 新版 x-web 的 article 无 data-testid，统一按 article 扫
+      const articles = document.querySelectorAll("article");
       for (const article of articles) {
         const links = article.querySelectorAll("a[href]");
         for (const a of links) {
@@ -92,6 +153,9 @@
 
   function hasAppContent() {
     try {
+      // 新版 x-web：router 已挂载即视为 hydrate 完成
+      if (findRouter()) return true;
+      // 旧版选择器
       if (document.querySelector('[data-testid="primaryColumn"]')) return true;
       if (document.querySelector('article[data-testid="tweet"]')) return true;
       if (document.querySelector('[data-testid="tweetText"]')) return true;
@@ -116,6 +180,74 @@
       if (hasAppContent()) return true;
     }
     return hasAppContent();
+  }
+
+  /**
+   * 新版 x-web：router.navigate 软跳。
+   * 成功 = router 位置与地址栏都对上目标，且加载结束；加载慢时地址对上即接受（X 自己会画 pending）。
+   * @returns {Promise<object|null>} null = 本策略不可用，交给 pushState 回退
+   */
+  async function routerNavigate(router, dest, wantKey, docIdBefore, log) {
+    log("try router_navigate", { dest });
+    let navError = null;
+    try {
+      const p = router.navigate({ href: dest });
+      if (p && typeof p.catch === "function") {
+        p.catch((e) => {
+          navError = String(e);
+        });
+      }
+    } catch (e) {
+      log("router_navigate throw", String(e));
+      return null;
+    }
+
+    const routerKey = () => pathKey(router.state?.location?.href || "");
+    let committed = false;
+    const end = Date.now() + 1500;
+    while (Date.now() < end) {
+      await sleep(30);
+      if (window.__xfasterDocId !== docIdBefore) {
+        return { ok: false, reason: "full_document_navigation", hardNav: true };
+      }
+      if (navError) {
+        log("router_navigate rejected", navError);
+        return null;
+      }
+      if (routerKey() !== wantKey || currentKey() !== wantKey) continue;
+      committed = true;
+      const st = router.state;
+      if (st.status === "error") {
+        log("router_navigate route error");
+        return {
+          ok: false,
+          reason: "spa_route_error",
+          path: currentKey(),
+          want: wantKey,
+        };
+      }
+      if (st.status !== "pending" && !st.isLoading) {
+        log("success router_navigate");
+        return {
+          ok: true,
+          method: "router_navigate",
+          path: currentKey(),
+          sameDocument: true,
+        };
+      }
+    }
+    if (committed && currentKey() === wantKey) {
+      log("router_navigate committed, still loading → accept");
+      return {
+        ok: true,
+        method: "router_navigate",
+        loading: true,
+        path: currentKey(),
+        sameDocument: true,
+      };
+    }
+    log("router_navigate key mismatch", { cur: currentKey(), want: wantKey });
+    return null;
   }
 
   async function softNavigate(targetHref) {
@@ -159,7 +291,13 @@
 
       if (wantKey === curKey) {
         const sid = statusIdFromKey(wantKey);
-        if (sid && !domHasStatus(sid)) {
+        // 新版：router 已在该路由且没出错，即视为已在目标
+        const r = findRouter();
+        const routerThere =
+          r &&
+          pathKey(r.state.location?.href || "") === wantKey &&
+          r.state.status !== "error";
+        if (sid && !routerThere && !domHasStatus(sid)) {
           log("same url but target tweet missing");
           return {
             ok: false,
@@ -188,11 +326,27 @@
         }
       }
 
-      // 1) DOM 内已有链接（按 status id / pathKey 匹配）
+      // 0) 新版 x-web：直接调 router.navigate（同文档、由 X 自己加载数据）
+      const router = findRouter();
+      if (router) {
+        const viaRouter = await routerNavigate(
+          router,
+          destForHistory || destPath,
+          wantKey,
+          docIdBefore,
+          log,
+        );
+        if (viaRouter) return { ...viaRouter, logs };
+        log("router_navigate failed, fallback pushState");
+      }
+
+      // 1) 旧版：DOM 内已有链接（按 status id / pathKey 匹配）
+      //    新版 TanStack Link 会因 capture 阶段的 preventDefault 放弃导航，故有 router 时跳过
       try {
-        log("try existing_link_safe_click");
+        log("try existing_link_safe_click", { skip: Boolean(router) });
         let link = null;
-        for (const a of document.querySelectorAll("a[href]")) {
+        const anchors = router ? [] : document.querySelectorAll("a[href]");
+        for (const a of anchors) {
           try {
             if (pathKey(a.href) === wantKey) {
               link = a;
@@ -391,60 +545,31 @@
   window.addEventListener("message", (event) => {
     if (event.source !== window) return;
     const data = event.data;
-    if (!data || data.source !== "xfaster") return;
-
-    if (data.type === "SPA_PING") {
-      window.postMessage(
-        {
-          source: "xfaster",
-          type: "SPA_NAV_RESULT",
-          id: data.id,
-          result: {
-            ok: true,
-            method: "ping",
-            hydrated: hasAppContent(),
-            docId: window.__xfasterDocId,
-            href: location.href,
-          },
-        },
-        "*",
-      );
+    if (
+      !data ||
+      data.source !== "xfaster" ||
+      data.type !== "XF_NAV" ||
+      data.build !== XF_BUILD
+    ) {
       return;
     }
 
-    if (data.type !== "SPA_NAV") return;
+    const reply = (result) =>
+      window.postMessage(
+        { source: "xfaster", type: "XF_RESULT", build: XF_BUILD, id: data.id, result },
+        "*",
+      );
 
     softNavigate(data.href)
-      .then((result) => {
-        window.postMessage(
-          {
-            source: "xfaster",
-            type: "SPA_NAV_RESULT",
-            id: data.id,
-            result,
-          },
-          "*",
-        );
-      })
-      .catch((e) => {
-        window.postMessage(
-          {
-            source: "xfaster",
-            type: "SPA_NAV_RESULT",
-            id: data.id,
-            result: {
-              ok: false,
-              reason: e instanceof Error ? e.message : String(e),
-            },
-          },
-          "*",
-        );
-      });
+      .then(reply)
+      .catch((e) =>
+        reply({ ok: false, reason: e instanceof Error ? e.message : String(e) }),
+      );
   });
 
   try {
     console.log(
-      "[XFaster][MAIN] v0.5.2 installed",
+      `[XFaster][MAIN] v${XF_BUILD} installed`,
       location.href,
       window.__xfasterDocId,
     );

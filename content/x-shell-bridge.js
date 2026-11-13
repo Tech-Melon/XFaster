@@ -1,16 +1,38 @@
 /**
- * x.com ISOLATED bridge — v0.5.2
+ * x.com ISOLATED bridge — v0.5.35
+ *
+ * 0.5.35：按构建版本隔离，扩展更新后不必刷新 X 标签
+ * - 旧 bridge 的扩展上下文失效（chrome.runtime.id 为空）时允许重新安装
+ * - 发给 MAIN 的消息带 build；MAIN 只响应同 build，旧 MAIN 残留不会抢答
+ * - XF_BUILD 必须与 manifest.json version、x-shell-main.js 一致（tools_pack_check.py 会校验）
  */
 (() => {
-  if (window.__xfasterBridgeInstalled) return;
-  window.__xfasterBridgeInstalled = true;
+  const XF_BUILD = "0.5.35";
+
+  const contextAlive = () => {
+    try {
+      return Boolean(chrome?.runtime?.id);
+    } catch {
+      return false;
+    }
+  };
+  // 同一扩展上下文已装过则跳过；上下文已失效（扩展被重载）则重新安装
+  if (typeof window.__xfasterBridgeAlive === "function" && window.__xfasterBridgeAlive()) {
+    return;
+  }
+  window.__xfasterBridgeAlive = contextAlive;
 
   const pending = new Map();
 
   window.addEventListener("message", (event) => {
     if (event.source !== window) return;
     const data = event.data;
-    if (!data || data.source !== "xfaster" || data.type !== "SPA_NAV_RESULT") {
+    if (
+      !data ||
+      data.source !== "xfaster" ||
+      data.type !== "XF_RESULT" ||
+      data.build !== XF_BUILD
+    ) {
       return;
     }
     const entry = pending.get(data.id);
@@ -20,7 +42,7 @@
     entry.resolve(data.result || { ok: false, reason: "empty_result" });
   });
 
-  function requestMain(type, href, timeoutMs = 6000) {
+  function requestMain(href, timeoutMs) {
     return new Promise((resolve) => {
       const id = `xf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const timer = setTimeout(() => {
@@ -34,52 +56,23 @@
 
       pending.set(id, { resolve, timer });
       window.postMessage(
-        {
-          source: "xfaster",
-          type,
-          id,
-          href,
-        },
+        { source: "xfaster", type: "XF_NAV", build: XF_BUILD, id, href },
         "*",
       );
     });
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (!message || !message.type) return false;
-
-    if (message.type === "SPA_PING") {
-      requestMain("SPA_PING", null, 2000)
-        .then(sendResponse)
-        .catch((e) =>
-          sendResponse({
-            ok: false,
-            reason: e instanceof Error ? e.message : String(e),
-          }),
-        );
-      return true;
-    }
-
-    if (message.type !== "SPA_NAV") return false;
+    if (!message || message.type !== "SPA_NAV") return false;
 
     console.log("[XFaster][bridge] SPA_NAV", message.href, location.href);
 
-    requestMain("SPA_NAV", message.href, 8000)
-      .then((result) => {
-        console.log("[XFaster][bridge] result", result);
-        sendResponse(result);
-      })
-      .catch((e) => {
-        const result = {
-          ok: false,
-          reason: e instanceof Error ? e.message : String(e),
-        };
-        console.warn("[XFaster][bridge] error", result);
-        sendResponse(result);
-      });
-
+    requestMain(message.href, 8000).then((result) => {
+      console.log("[XFaster][bridge] result", result);
+      sendResponse(result);
+    });
     return true;
   });
 
-  console.log("[XFaster][bridge] v0.5.2 installed", location.href);
+  console.log(`[XFaster][bridge] v${XF_BUILD} installed`, location.href);
 })();

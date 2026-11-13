@@ -6,7 +6,7 @@
 
 - **名称**：Tech Melon XFaster  
 - **类型**：Chrome Manifest V3 浏览器扩展  
-- **当前版本**：以 `manifest.json` 的 `version` 为准（文档同步至 **0.5.34**）  
+- **当前版本**：以 `manifest.json` 的 `version` 为准（文档同步至 **0.5.35**）  
 - **目标**：外站更快打开 X（Twitter）；热壳复用 + 智能打开；可控内存  
 - **非目标**：X 客户端替代、24h 挂死 X、iframe 嵌 X、上传浏览数据  
 
@@ -47,6 +47,9 @@ docs/         使用说明、设计说明、变更记录、文档规范
 6. TTL 用绝对时间戳 + alarms  
 7. 块注释中 **禁止** 写出提前结束的 `*/`（例如错误注释 `*://*/*`）  
 8. 改权限 / 档位 / 消息协议 → 同步 README、docs、商店 DOC  
+9. 升版本时同步 `content/x-shell-main.js` 与 `content/x-shell-bridge.js` 里的 `XF_BUILD`（`tools_pack_check.py` 会校验）  
+10. 临时 `_run_*.py` 一律放 `$env:TEMP\xfaster-run\`，**禁止放进扩展根目录**（Chrome 拒绝加载 `_` 开头文件）  
+11. X 新版（x-web）用 TanStack Router：软跳优先 `router.navigate`，不要依赖 `data-testid` / `#react-root`  
 
 ## 5. 文档
 
@@ -64,7 +67,7 @@ docs/         使用说明、设计说明、变更记录、文档规范
 - [ ] 无 X 标签点推文 → 仅 1 标签  
 - [ ] 全站授权 + 刷新外站 → 尽量无冷标签闪屏  
 - [ ] x.com 侧栏可点  
-- [ ] 重载扩展后刷新页面  
+- [ ] 重载扩展后：外站页面需刷新；已开 X 标签不刷新也能软跳（按 build 重注入）  
 - [ ] 弹窗授权可点、不卡「加载中」  
 - [ ] `node --check` 关键模块无语法错误  
 - [ ] 热壳闲置数分钟后点另一条推文 → 打开新链接，不是上一帖  
